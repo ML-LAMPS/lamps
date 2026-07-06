@@ -1,0 +1,6 @@
+tensorboard==2.20.0
+tbparse==0.0.9
+transformers==4.57.1
+stable_baselines3[extra]
+sb3_contrib==2.6.0
+pymoo==0.6.1.5

@@ -1,0 +1,5 @@
+__pycache__/
+checkpoints/
+metadataset/
+metadataset_v1/
+tb_logs/
