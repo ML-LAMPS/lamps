@@ -74,19 +74,7 @@ to check what a given `metadataset/<experiment>/` directory contains.
 
 ## Reproducing the main results
 
-### 1. Single-task training (sanity check)
-
-Trains a PPO policy on a single dataset only (no meta-learning / transfer):
-
-```bash
-python train_single.py \
-    --experiment "text-classification" \
-    --dataset "CogComp/trec" \
-    --objectives "model/size_billion,eval/log_loss" \
-    --total-timesteps 10e6
-```
-
-### 2. Multi-task meta-training (leave-one-out, Section 6)
+### Multi-task meta-training (leave-one-out, Section 6)
 
 Trains a single policy across all-but-one dataset and evaluates zero-shot transfer to the held-out
 dataset — this is the protocol used to produce Figures 3–4 and Tables 1–2:
@@ -100,6 +88,11 @@ python train_mtrl.py \
     --total-timesteps 20e6
 ```
 
+> `--train-datasets "all"` trains on every dataset in the experiment, but `train_mtrl.py`
+> automatically removes anything listed in `--eval-datasets` from that set before training starts.
+> The held-out dataset is therefore never seen during meta-training, so there is no leakage
+> between the reported held-out result and the training set.
+
 Repeat with each dataset in turn as `--eval-datasets` to reproduce the full leave-one-out sweep
 (Table 1: two objectives; Table 2: add `eval/neg_bleu` to `--objectives` for the three-objective
 machine translation setting).
@@ -107,7 +100,7 @@ machine translation setting).
 To reproduce the single-objective ablation (Table 3, Appendix D.2), pass a single metric, e.g.
 `--objectives "eval/log_loss"`.
 
-### 3. Monitoring training
+### Monitoring training
 
 ```bash
 tensorboard --logdir ./tb_logs
