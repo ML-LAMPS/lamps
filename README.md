@@ -12,23 +12,6 @@ candidate pretrained LLMs for a task-specific dataset. LAMPS combines:
 > Monteiro, M., Li, W., Wang, P., Kloft, M., and Fellenz, S. *Landmark-Guided Policy Optimization
 > for Multi-Objective Language Model Selection.* ICML 2026.
 
-## Repository structure
-
-```
-lamps/
-├── lamps/
-│   ├── environment.py   # Gymnasium env: observation/action space, reward, termination
-│   ├── repository.py    # Loads landmark learning curves from the meta-dataset
-│   ├── datainfo.py       # Pareto-front / hypervolume bookkeeping per dataset
-│   ├── settings.py       # PPO hyperparameters and objective definitions
-│   └── utils.py
-├── train_single.py       # Single-task PPO training (one dataset)
-├── train_mtrl.py          # Multi-task PPO training (leave-one-out meta-training)
-├── model_sizes.json       # Parameter counts for all candidate pretrained models
-├── metadataset/           # Recorded landmark fine-tuning logs (not included, see below)
-└── requirements.txt
-```
-
 ## Installation
 
 Requires Python 3.10+.
