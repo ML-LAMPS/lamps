@@ -106,7 +106,7 @@ class Repository:
             )
         self.datainfo = DataInfo(self.models, metrics, self.data)
 
-    def load_data(self, lr=5e-5, bs="auto"):
+    def load_data(self):
         data = {}
 
         m = re.search(r"^([^\[\]]+)(?:\[(.*?)\])?$", self.dataset)
@@ -116,8 +116,11 @@ class Repository:
         models = self.list_models(self.experiment)
 
         for model in models:
-            log_dir = f"metadataset/{self.experiment}/m={model.replace('/', '_SL_')}__d={dataset_name.replace('/', '_SL_')}__s={dataset_config}__lr={lr}__bs={bs}/"
-            data[model] = parse_tblogs(log_dir)
+            pattern = f"metadataset/{self.experiment}/m={model.replace('/', '_SL_')}__d={dataset_name.replace('/', '_SL_')}__s={dataset_config}__lr=*__bs=*/"
+            matches = glob(pattern)
+            if not matches:
+                continue
+            data[model] = parse_tblogs(matches[0])
 
         self.data = data
 
