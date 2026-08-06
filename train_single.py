@@ -37,6 +37,9 @@ parser.add_argument("--total-timesteps", type=float, default=10e6)
 parser.add_argument(
     "--objectives", type=str, default="model/size_billion,eval/log_loss"
 )
+parser.add_argument("--seed", type=int, default=settings.DEFAULT_SEED)
+parser.add_argument("--base-checkpoint", type=str, default=None)
+parser.add_argument("--device", type=str, default="auto")
 
 
 def make_env(experiment: str, dataset: str, metrics: list):
@@ -89,13 +92,23 @@ def main():
         )
         callbacks.append(MaskableEvalCallback(eval_env=eval_env))
 
-    model = MaskablePPO(
-        policy="MultiInputPolicy",
-        env=env,
-        device="auto",
-        tensorboard_log=tensorboard_log,
-        **settings.PPO_HYPERPARAMS,
-    )
+    if args.base_checkpoint is not None:
+        print(f"Loading base checkpoint from {args.base_checkpoint}")
+        model = MaskablePPO.load(
+            args.base_checkpoint,
+            env=env,
+            device=args.device,
+            tensorboard_log=tensorboard_log,
+        )
+    else:
+        model = MaskablePPO(
+            policy="MultiInputPolicy",
+            env=env,
+            device=args.device,
+            tensorboard_log=tensorboard_log,
+            seed=args.seed,
+            **settings.PPO_HYPERPARAMS,
+        )
 
     model.learn(
         total_timesteps=args.total_timesteps,
