@@ -70,7 +70,8 @@ class DatasetEnv(gym.Env):
 
         self.dataset = dataset
         self.objectives_data = objectives
-        self.observers = self._setup_observers(observers)
+        self.observers = {}
+        self._setup_observers(observers)
 
         if ref_point is not None:
             self.ref_point = ref_point
@@ -126,15 +127,9 @@ class DatasetEnv(gym.Env):
         }
 
     def _setup_observers(self, observers: list[str]):
-
-        instances = {}
-
         for obs in observers:
             obs_cls = utils.load_class(obs)
-            instances[obs_cls.NAME] = obs_cls(self)
-
-            print(f"Registered observer: {obs_cls.NAME} ({obs_cls.__name__})")
-        return instances
+            self.observers[obs_cls.NAME] = obs_cls(self)
 
     def _compute_ref_point(self, gap: float = 1.1):
         """
