@@ -4,7 +4,7 @@ Train a single-task PPO model on a specified dataset.
 Example:
     $ python train_single.py --experiment "text-classification" \
         --dataset "CogComp/trec" \
-        --objectives "model/size_billion,eval/neg_bleu" \
+        --objectives "model/size_billion,eval/neg_accuracy" \
         --total-timesteps 10e6
 
     $ python train_single.py --experiment "machine-translation" \

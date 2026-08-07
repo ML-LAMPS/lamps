@@ -71,6 +71,7 @@ class DatasetEnv(gym.Env):
         self.dataset = dataset
         self.objectives_data = objectives
         self.observers = {}
+
         self._setup_observers(observers)
 
         if ref_point is not None:
@@ -92,27 +93,11 @@ class DatasetEnv(gym.Env):
 
         obs_space = {}
 
-        for key, value in objectives.items():
-            obs_space[key] = gym.spaces.Box(
-                low=value["min_value"],
-                high=value["max_value"],
-                shape=(num_models,),
-                dtype=np.float32,
-            )
-
         for observer in self.observers.values():
             obs_space[observer.NAME] = observer.to_space()
 
         self.observation_space = gym.spaces.Dict(obs_space)
         self.action_space = gym.spaces.Discrete(num_models)
-
-        self.objective_arrays = {
-            objective: [
-                np.asarray(self.repository.data[model][objective], dtype=np.float32)
-                for model in self.models
-            ]
-            for objective in self.objectives
-        }
 
     def _setup_observers(self, observers: list[str]):
         for obs in observers:
@@ -168,18 +153,6 @@ class DatasetEnv(gym.Env):
 
         for observer in self.observers.values():
             obs[observer.NAME] = observer.observe()
-
-        # Add objective metrics to observation
-        # for objective in self.objectives:
-        #     objective_values = np.fromiter(
-        #         (
-        #             self.objective_arrays[objective][i][epoch]
-        #             for i, epoch in enumerate(self.epoch_counts)
-        #         ),
-        #         dtype=np.float32,
-        #         count=self.num_models,
-        #     )
-        #     obs[objective] = objective_values
 
         return obs
 
