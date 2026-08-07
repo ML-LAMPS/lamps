@@ -16,7 +16,10 @@ class EvalDatasetEnv(DatasetEnv):
     def reset(self, *, seed: int | None = None, options: dict[str, Any] | None = None):
         observation, info = super().reset(seed=seed, options=options)
 
-        self.history = {"time": [0.0], "hypervolume": [0.0]}
+        self.history = {
+            "time": [0.0],
+            "hypervolume": [0.0],
+        }
 
         return observation, info
 
@@ -42,21 +45,28 @@ class EvalDatasetEnv(DatasetEnv):
             )
 
     def _render_hypervolume(self):
-        import matplotlib.pyplot as plt
+        hv_threashold = 99
 
         _, ax = plt.subplots()
-        ax.plot(self.history["time"], self.history["hypervolume"], marker="o")
 
-        if self.optimal_hv is not None:
-            ax.axhline(
-                self.optimal_hv, color="gray", linestyle="--", label="Optimal HV"
-            )
+        hv_loss = [1 - hv / self.optimal_hv for hv in self.history["hypervolume"]]
+
+        ax.plot(self.history["time"], hv_loss, marker="o")
+
+        ax.axhline(
+            1 - hv_threashold / 100,
+            color="gray",
+            linestyle="--",
+            label=f"{hv_threashold}% optimal HV",
+        )
 
         ax.set_xlabel("Search time (s)")
         ax.set_ylabel("Hypervolume")
         ax.set_title(f"{self.dataset} — policy evaluation")
         ax.legend()
 
+        plt.yscale("log")
+        plt.grid(True, which="both", ls="--", lw=0.5)
         plt.show()
 
     def _current_objective_values(self):

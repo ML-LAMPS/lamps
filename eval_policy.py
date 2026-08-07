@@ -1,13 +1,40 @@
+"""
+Off-line evaluation of a trained policy on a given dataset.
+
+Example usage:
+    $ python eval_policy.py \
+        --experiment "image-classification" \
+        --eval-dataset "mtlbm/micro/set0/BCT" \
+        --base-checkpoint "checkpoints/image-classification/mtrl/mtlbm/micro/set0/BCT_1/rl_model_3999968_steps.zip" \
+        --objectives "model/size_billion,eval/log_loss" \
+        --render "hypervolume"
+"""
+
+import argparse
+
 from sb3_contrib.ppo_mask import MaskablePPO
 
 from lamps.environment import EvalDatasetEnv
-from lamps.settings import objectives
+from lamps.settings import objectives as parse_objectives
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--experiment", type=str, required=True)
+parser.add_argument("--eval-dataset", type=str, required=True)
+parser.add_argument("--base-checkpoint", type=str, required=True)
+parser.add_argument("--objectives", type=str, required=True)
+parser.add_argument(
+    "--render",
+    type=str,
+    choices=["hypervolume", "objectives"],
+    default=None,
+    help="Render mode (optional): hypervolume or objectives",
+)
 
 
 def eval_policy(
     experiment: str,
     dataset: str,
-    objectives: dict,
+    objectives: list[str],
     policy_path: str,
     render: str | None = None,
 ):
@@ -17,7 +44,7 @@ def eval_policy(
     env = EvalDatasetEnv(
         experiment=experiment,
         dataset=dataset,
-        objectives=objectives,
+        objectives=parse_objectives(objectives),
     )
 
     obs, info = env.reset()
@@ -38,12 +65,17 @@ def eval_policy(
     return total_reward
 
 
-if __name__ == "__main__":
-    _objs = objectives(["model/size_billion", "eval/log_loss"])
+def main():
+    args = parser.parse_args()
+
     eval_policy(
-        "image-classification",
-        "mtlbm/micro/set0/BCT",
-        _objs,
-        "checkpoints/image-classification/single/mtlbm/micro/set0/BCT_1/rl_model_6000000_steps.zip",
-        render="objectives",
+        args.experiment,
+        args.eval_dataset,
+        args.objectives.split(","),
+        args.base_checkpoint,
+        render=args.render,
     )
+
+
+if __name__ == "__main__":
+    main()
