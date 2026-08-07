@@ -45,7 +45,18 @@ class DatasetEnv(gym.Env):
 
     @property
     def epoch_counts(self) -> np.ndarray:
+        assert "epochs" in self.observers, "EpochObserver is not registered."
         return self.observers["epochs"].epoch_counts
+
+    @property
+    def available_epochs(self) -> np.ndarray:
+        assert "epochs" in self.observers, "EpochObserver is not registered."
+        return self.observers["epochs"].available_epochs
+
+    @property
+    def valid_mask(self) -> np.ndarray:
+        assert "action_mask" in self.observers, "ActionMaskObserver is not registered."
+        return self.observers["action_mask"].valid_mask
 
     def __init__(
         self,
@@ -59,6 +70,7 @@ class DatasetEnv(gym.Env):
 
         self.dataset = dataset
         self.objectives_data = objectives
+        self.observers = self._setup_observers(observers)
 
         if ref_point is not None:
             self.ref_point = ref_point
@@ -78,12 +90,12 @@ class DatasetEnv(gym.Env):
         num_models = self.repository.num_models
 
         obs_space = {
-            "action_mask": gym.spaces.Box(
-                low=0,
-                high=1,
-                shape=(num_models,),
-                dtype=np.float32,
-            ),
+            # "action_mask": gym.spaces.Box(
+            #     low=0,
+            #     high=1,
+            #     shape=(num_models,),
+            #     dtype=np.float32,
+            # ),
         }
 
         for key, value in objectives.items():
@@ -94,18 +106,16 @@ class DatasetEnv(gym.Env):
                 dtype=np.float32,
             )
 
-        self.observers = self._setup_observers(observers)
-
         for observer in self.observers.values():
             obs_space[observer.NAME] = observer.to_space()
 
         self.observation_space = gym.spaces.Dict(obs_space)
         self.action_space = gym.spaces.Discrete(num_models)
 
-        self.available_epochs = np.array(
-            [self.repository.get_num_available_epochs(model) for model in self.models],
-            dtype=np.int32,
-        )
+        # self.available_epochs = np.array(
+        #     [self.repository.get_num_available_epochs(model) for model in self.models],
+        #     dtype=np.int32,
+        # )
 
         self.objective_arrays = {
             objective: [
@@ -123,6 +133,7 @@ class DatasetEnv(gym.Env):
             obs_cls = utils.load_class(obs)
             instances[obs_cls.NAME] = obs_cls(self)
 
+            print(f"Registered observer: {obs_cls.NAME} ({obs_cls.__name__})")
         return instances
 
     def _compute_ref_point(self, gap: float = 1.1):
@@ -156,15 +167,15 @@ class DatasetEnv(gym.Env):
         for observer in self.observers.values():
             observer.reset()
 
-        valid_mask = self._compute_valid_mask()
+        # valid_mask = self._compute_valid_mask()
 
-        observation = self.get_obs(valid_mask)
+        observation = self.get_obs(self.valid_mask)
         info = self.get_info()
 
         return observation, info
 
     def _compute_valid_mask(self) -> np.ndarray:
-        return self.epoch_counts < self.available_epochs
+        return self.observers["action_mask"].compute_valid_mask()
 
     def get_obs(self, valid_mask: np.ndarray | None = None):
         if valid_mask is None:
@@ -221,7 +232,7 @@ class DatasetEnv(gym.Env):
         """
         model_idx = int(action)
         model = self.models[model_idx]
-        valid_mask_before = self._compute_valid_mask()
+        valid_mask_before = self.valid_mask
 
         assert valid_mask_before[
             model_idx
@@ -230,7 +241,7 @@ class DatasetEnv(gym.Env):
         for observer in self.observers.values():
             observer.step(action)
 
-        valid_mask_after = self._compute_valid_mask()
+        valid_mask_after = self.valid_mask
 
         terminated = self.is_terminated(valid_mask_after)
         reward = self.reward(terminated, valid_mask_after)
@@ -252,7 +263,7 @@ class DatasetEnv(gym.Env):
 
         num_pareto_models = len(self.pareto_models)
         if valid_mask is None:
-            valid_mask = self._compute_valid_mask()
+            valid_mask = self.valid_mask
         num_completed_models = self.num_models - int(np.count_nonzero(valid_mask))
 
         _reward = (self.num_models - num_completed_models) / self.search_time()
@@ -266,7 +277,7 @@ class DatasetEnv(gym.Env):
         # FIXME: This condition is not ideal for slowly converging scenarios. Checking
         # the hypervolume is a better approach, but it requires a different reward.
         if valid_mask is None:
-            valid_mask = self._compute_valid_mask()
+            valid_mask = self.valid_mask
 
         return bool(np.all(~valid_mask[self.pareto_models_idx]))
 

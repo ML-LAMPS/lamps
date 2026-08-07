@@ -28,7 +28,11 @@ OBJECTIVES = {
     "eval/neg_f1_macro": {"min_value": -1.0, "max_value": 0.0},
 }
 
-OBSERVERS = ("lamps.observers.EpochObserver", "lamps.observers.RuntimeObserver")
+OBSERVERS = (
+    "lamps.observers.EpochObserver",
+    "lamps.observers.RuntimeObserver",
+    "lamps.observers.ActionMaskObserver",
+)
 
 
 def objectives(metrics: list[str]):

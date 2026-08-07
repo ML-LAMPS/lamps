@@ -17,6 +17,11 @@ class EpochObserver(BaseObserver):
 
         self.initialize()
 
+        self.available_epochs = np.array(
+            [self.repository.get_num_available_epochs(model) for model in self.models],
+            dtype=np.int32,
+        )
+
     def to_space(self) -> gym.Space:
         return gym.spaces.Box(
             low=0,
