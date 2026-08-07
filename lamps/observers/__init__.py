@@ -1,3 +1,4 @@
-from .epoch_counter import EpochCounter
+from .epoch import EpochObserver
+from .runtime import RuntimeObserver
 
-__ALL__ = ["EpochCounter"]
+__ALL__ = ["EpochObserver", "RuntimeObserver"]

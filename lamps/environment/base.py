@@ -9,8 +9,6 @@ from lamps.repository import Repository
 from lamps import settings
 from lamps import utils
 
-NUM_MAX_EPOCHS = 50
-MAX_RUNTIME = 72 * 60 * 60.0  # 72 hours in seconds
 OPTIMAL_REWARD = 3000.0
 
 
@@ -45,23 +43,22 @@ class DatasetEnv(gym.Env):
     def max_runtime(self):
         return self.repository.get_total_time(only_pareto=False)
 
+    @property
+    def epoch_counts(self) -> np.ndarray:
+        return self.observers["epochs"].epoch_counts
+
     def __init__(
         self,
         experiment: str,
         dataset: str,
         objectives: dict,
         ref_point: list | None = None,
-        skip_models: list = [],
         observers: list[str] | None = settings.OBSERVERS,
     ):
         self.repository = Repository(experiment, dataset, list(objectives.keys()))
 
         self.dataset = dataset
         self.objectives_data = objectives
-        self.skip_models = skip_models
-        self.skip_models_indices = [
-            self.models.index(model) for model in self.skip_models
-        ]
 
         if ref_point is not None:
             self.ref_point = ref_point
@@ -73,9 +70,7 @@ class DatasetEnv(gym.Env):
         ), "Number of objectives and reference point dimensions must match."
 
         self.optimal_hv = self.repository.get_optimal_hv(self.ref_point)
-        self.pareto_models = self.repository.get_pareto_models(
-            exclude_models=self.skip_models
-        )
+        self.pareto_models = self.repository.get_pareto_models()
         self.pareto_models_idx = [
             self.models.index(model) for model in self.pareto_models
         ]
@@ -83,18 +78,6 @@ class DatasetEnv(gym.Env):
         num_models = self.repository.num_models
 
         obs_space = {
-            # "epochs": gym.spaces.Box(
-            #     low=0,
-            #     high=NUM_MAX_EPOCHS,
-            #     shape=(num_models,),
-            #     dtype=np.float32,
-            # ),
-            "runtime": gym.spaces.Box(
-                low=0,
-                high=MAX_RUNTIME,
-                shape=(num_models,),
-                dtype=np.float32,
-            ),
             "action_mask": gym.spaces.Box(
                 low=0,
                 high=1,
@@ -124,14 +107,6 @@ class DatasetEnv(gym.Env):
             dtype=np.int32,
         )
 
-        self.skip_models_mask = np.zeros(num_models, dtype=bool)
-        if self.skip_models_indices:
-            self.skip_models_mask[self.skip_models_indices] = True
-
-        self.runtime_prefix = [
-            np.asarray(self.repository.elapsed_time_prefix[model], dtype=np.float32)
-            for model in self.models
-        ]
         self.objective_arrays = {
             objective: [
                 np.asarray(self.repository.data[model][objective], dtype=np.float32)
@@ -139,10 +114,6 @@ class DatasetEnv(gym.Env):
             ]
             for objective in self.objectives
         }
-
-    @property
-    def epoch_counts(self) -> np.ndarray:
-        return self.observers["epochs"].epoch_counts
 
     def _setup_observers(self, observers: list[str]):
 
@@ -176,6 +147,9 @@ class DatasetEnv(gym.Env):
 
         return ref_point
 
+    def search_time(self):
+        return self.observers["runtime"].search_time()
+
     def reset(self, *, seed: int | None = None, options: dict[str, Any] | None = None):
         super().reset(seed=seed, options=options)
 
@@ -190,27 +164,13 @@ class DatasetEnv(gym.Env):
         return observation, info
 
     def _compute_valid_mask(self) -> np.ndarray:
-        valid_mask = self.epoch_counts < self.available_epochs
-        if self.skip_models_indices:
-            valid_mask = valid_mask & (~self.skip_models_mask)
-        return valid_mask
+        return self.epoch_counts < self.available_epochs
 
     def get_obs(self, valid_mask: np.ndarray | None = None):
         if valid_mask is None:
             valid_mask = self._compute_valid_mask()
 
-        current_runtime = np.fromiter(
-            (
-                self.runtime_prefix[i][epoch] if self.runtime_prefix[i].size else 0.0
-                for i, epoch in enumerate(self.epoch_counts)
-            ),
-            dtype=np.float32,
-            count=self.num_models,
-        )
-
         obs = {
-            # "epochs": self.epoch_counts,
-            "runtime": current_runtime,
             "action_mask": valid_mask.astype(np.float32),
         }
 
@@ -236,34 +196,15 @@ class DatasetEnv(gym.Env):
         info = {}
 
         for observer in self.observers.values():
-            info.update(observer.info())
+            _info = observer.info()
 
-        # return {
-        #     "epoch_counts": self.epoch_counts,
-        # }
+            if _info:
+                info.update(_info)
 
         return info
 
     def num_remaining_models(self):
         return int(np.count_nonzero(self._compute_valid_mask()))
-
-    def search_time(self):
-        return float(
-            np.sum(
-                np.fromiter(
-                    (
-                        (
-                            self.runtime_prefix[i][epoch]
-                            if self.runtime_prefix[i].size
-                            else 0.0
-                        )
-                        for i, epoch in enumerate(self.epoch_counts)
-                    ),
-                    dtype=np.float32,
-                    count=self.num_models,
-                )
-            )
-        )
 
     def valid_actions(self):
         return np.flatnonzero(self._compute_valid_mask()).tolist()

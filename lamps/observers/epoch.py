@@ -1,10 +1,10 @@
 import numpy as np
 import gymnasium as gym
 
-from .base import BaseObservation
+from .base import BaseObserver
 
 
-class EpochCounter(BaseObservation):
+class EpochObserver(BaseObserver):
     """
     Observation class that provides the current epoch count.
     """
