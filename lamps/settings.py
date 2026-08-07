@@ -32,6 +32,8 @@ OBSERVERS = (
     "lamps.observers.EpochObserver",
     "lamps.observers.RuntimeObserver",
     "lamps.observers.ActionMaskObserver",
+    "lamps.observers.ModelSizeBillionObserver",
+    "lamps.observers.EvalLogLossObserver",
 )
 
 

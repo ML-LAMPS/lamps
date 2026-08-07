@@ -141,7 +141,12 @@ class DatasetEnv(gym.Env):
 
         return ref_point
 
+    def _compute_valid_mask(self) -> np.ndarray:
+        assert "action_mask" in self.observers, "ActionMaskObserver is not registered."
+        return self.observers["action_mask"].compute_valid_mask()
+
     def search_time(self):
+        assert "runtime" in self.observers, "RuntimeObserver is not registered."
         return self.observers["runtime"].search_time()
 
     def reset(self, *, seed: int | None = None, options: dict[str, Any] | None = None):
@@ -155,31 +160,26 @@ class DatasetEnv(gym.Env):
 
         return observation, info
 
-    def _compute_valid_mask(self) -> np.ndarray:
-        return self.observers["action_mask"].compute_valid_mask()
-
     def get_obs(self, valid_mask: np.ndarray | None = None):
         if valid_mask is None:
             valid_mask = self._compute_valid_mask()
 
-        obs = {
-            "action_mask": valid_mask.astype(np.float32),
-        }
+        obs = {}
 
         for observer in self.observers.values():
             obs[observer.NAME] = observer.observe()
 
         # Add objective metrics to observation
-        for objective in self.objectives:
-            objective_values = np.fromiter(
-                (
-                    self.objective_arrays[objective][i][epoch]
-                    for i, epoch in enumerate(self.epoch_counts)
-                ),
-                dtype=np.float32,
-                count=self.num_models,
-            )
-            obs[objective] = objective_values
+        # for objective in self.objectives:
+        #     objective_values = np.fromiter(
+        #         (
+        #             self.objective_arrays[objective][i][epoch]
+        #             for i, epoch in enumerate(self.epoch_counts)
+        #         ),
+        #         dtype=np.float32,
+        #         count=self.num_models,
+        #     )
+        #     obs[objective] = objective_values
 
         return obs
 
