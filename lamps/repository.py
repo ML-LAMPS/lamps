@@ -66,7 +66,6 @@ def parse_tblogs(log_dir: str):
     return eval_data
 
 
-
 class Repository:
 
     experiment: str
@@ -88,6 +87,8 @@ class Repository:
         self.experiment = experiment
         self.dataset = dataset
         self.metrics = metrics
+        self.elapsed_time_prefix = {}
+        self.total_model_runtime = {}
 
         assert dataset in self.list_datasets(
             experiment
@@ -106,6 +107,23 @@ class Repository:
             )
         self.datainfo = DataInfo(self.models, metrics, self.data)
 
+    def _build_runtime_cache(self):
+        self.elapsed_time_prefix = {}
+        self.total_model_runtime = {}
+
+        for model, metrics_data in self.data.items():
+            epoch_runtime = np.asarray(
+                metrics_data.get("eval/epoch_runtime", []), dtype=float
+            )
+            if epoch_runtime.size == 0:
+                self.elapsed_time_prefix[model] = []
+                self.total_model_runtime[model] = 0.0
+                continue
+
+            prefix = np.cumsum(epoch_runtime)
+            self.elapsed_time_prefix[model] = prefix.tolist()
+            self.total_model_runtime[model] = float(prefix[-1])
+
     def load_data(self):
         data = {}
 
@@ -123,6 +141,7 @@ class Repository:
             data[model] = parse_tblogs(matches[0])
 
         self.data = data
+        self._build_runtime_cache()
 
         return data
 
@@ -147,7 +166,17 @@ class Repository:
         return len(self.data[model]["eval/loss"]) - 1  # Exclude epoch 0
 
     def get_elapsed_time(self, model: str, epoch: int):
-        return sum(self.data[model]["eval/epoch_runtime"][0 : epoch + 1])
+        if model not in self.elapsed_time_prefix:
+            raise ValueError(f"Model {model} not found in runtime cache.")
+
+        prefix = self.elapsed_time_prefix[model]
+        if not prefix:
+            return 0.0
+
+        if epoch < 0 or epoch >= len(prefix):
+            raise ValueError(f"Epoch {epoch} out of range for model {model}.")
+
+        return prefix[epoch]
 
     def get_total_time(self, only_pareto: bool = False):
         """
@@ -168,7 +197,7 @@ class Repository:
             models = self.models
 
         for model in models:
-            total_time += sum(self.data[model]["eval/epoch_runtime"])
+            total_time += self.total_model_runtime[model]
 
         return total_time
 
@@ -278,5 +307,3 @@ class Repository:
         datasets.sort()
 
         return datasets
-
-
