@@ -28,6 +28,8 @@ OBJECTIVES = {
     "eval/neg_f1_macro": {"min_value": -1.0, "max_value": 0.0},
 }
 
+OBSERVERS = ("lamps.observers.EpochCounter",)
+
 
 def objectives(metrics: list[str]):
     return {metric: OBJECTIVES[metric] for metric in metrics}

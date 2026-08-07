@@ -2,14 +2,14 @@
 Training script for multi-task reinforcement learning (MTRL) using MaskablePPO.
 
 Example:
-    $ python train_mtrl.py --experiment "text-classification" --total-timesteps 20e6 \
+    $ python train_mtrl.py --experiment "text-classification" --total-timesteps 10e6 \
         --train-datasets "all" --eval-datasets "CogComp/trec"
 
-    $ python train_mtrl.py --experiment "machine-translation" --total-timesteps 20e6 \
+    $ python train_mtrl.py --experiment "machine-translation" --total-timesteps 10e6 \
         --train-datasets "all" --eval-datasets "Helsinki-NLP/opus_books[en-es]" \
         --objectives "model/size_billion,eval/log_loss"
 
-    $ python train_mtrl.py --experiment "image-classification" --total-timesteps 20e6 \
+    $ python train_mtrl.py --experiment "image-classification" --total-timesteps 10e6 \
         --train-datasets "all" --eval-datasets "mtlbm/micro/set0/BCT" \
         --objectives "model/size_billion,eval/log_loss"
 """
@@ -35,7 +35,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--experiment", type=str, required=True)
 parser.add_argument("--train-datasets", type=str, required=True)
 parser.add_argument("--eval-datasets", type=str, required=True)
-parser.add_argument("--total-timesteps", type=float, default=20e6)
+parser.add_argument("--total-timesteps", type=float, default=10e6)
 parser.add_argument("--base-checkpoint", type=str, default=None)
 parser.add_argument(
     "--objectives", type=str, default="model/size_billion,eval/log_loss"

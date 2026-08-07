@@ -6,6 +6,8 @@ import gymnasium as gym
 from pymoo.indicators.hv import HV
 
 from lamps.repository import Repository
+from lamps import settings
+from lamps import utils
 
 NUM_MAX_EPOCHS = 50
 MAX_RUNTIME = 72 * 60 * 60.0  # 72 hours in seconds
@@ -50,6 +52,7 @@ class DatasetEnv(gym.Env):
         objectives: dict,
         ref_point: list | None = None,
         skip_models: list = [],
+        observers: list[str] | None = settings.OBSERVERS,
     ):
         self.repository = Repository(experiment, dataset, list(objectives.keys()))
 
@@ -80,12 +83,12 @@ class DatasetEnv(gym.Env):
         num_models = self.repository.num_models
 
         obs_space = {
-            "epochs": gym.spaces.Box(
-                low=0,
-                high=NUM_MAX_EPOCHS,
-                shape=(num_models,),
-                dtype=np.float32,
-            ),
+            # "epochs": gym.spaces.Box(
+            #     low=0,
+            #     high=NUM_MAX_EPOCHS,
+            #     shape=(num_models,),
+            #     dtype=np.float32,
+            # ),
             "runtime": gym.spaces.Box(
                 low=0,
                 high=MAX_RUNTIME,
@@ -107,6 +110,11 @@ class DatasetEnv(gym.Env):
                 shape=(num_models,),
                 dtype=np.float32,
             )
+
+        self.observers = self._setup_observers(observers)
+
+        for observer in self.observers.values():
+            obs_space[observer.NAME] = observer.to_space()
 
         self.observation_space = gym.spaces.Dict(obs_space)
         self.action_space = gym.spaces.Discrete(num_models)
@@ -133,6 +141,16 @@ class DatasetEnv(gym.Env):
             for objective in self.objectives
         }
 
+    def _setup_observers(self, observers: list[str]):
+
+        instances = {}
+
+        for obs in observers:
+            obs_cls = utils.load_class(obs)
+            instances[obs_cls.NAME] = obs_cls(self)
+
+        return instances
+
     def _compute_ref_point(self, gap: float = 1.1):
         """
         For each objective, compute a reference point that is slightly worse
@@ -158,7 +176,9 @@ class DatasetEnv(gym.Env):
     def reset(self, *, seed: int | None = None, options: dict[str, Any] | None = None):
         super().reset(seed=seed, options=options)
 
-        self.epoch_counts = np.zeros(self.num_models, dtype=np.int32)
+        for observer in self.observers.values():
+            observer.reset()
+
         valid_mask = self._compute_valid_mask()
 
         observation = self.get_obs(valid_mask)
@@ -186,10 +206,13 @@ class DatasetEnv(gym.Env):
         )
 
         obs = {
-            "epochs": self.epoch_counts,
+            # "epochs": self.epoch_counts,
             "runtime": current_runtime,
             "action_mask": valid_mask.astype(np.float32),
         }
+
+        for observer in self.observers.values():
+            obs[observer.NAME] = observer.observe()
 
         # Add objective metrics to observation
         for objective in self.objectives:
@@ -206,9 +229,17 @@ class DatasetEnv(gym.Env):
         return obs
 
     def get_info(self):
-        return {
-            "epoch_counts": self.epoch_counts,
-        }
+
+        info = {}
+
+        for observer in self.observers.values():
+            info.update(observer.info())
+
+        # return {
+        #     "epoch_counts": self.epoch_counts,
+        # }
+
+        return info
 
     def num_remaining_models(self):
         return int(np.count_nonzero(self._compute_valid_mask()))
@@ -252,8 +283,9 @@ class DatasetEnv(gym.Env):
             model_idx
         ], f"Model {model} (action {model_idx}) is fully trained."
 
-        # Update epoch count
-        self.epoch_counts[model_idx] += 1
+        for observer in self.observers.values():
+            observer.step(action)
+
         valid_mask_after = self._compute_valid_mask()
 
         terminated = self.is_terminated(valid_mask_after)

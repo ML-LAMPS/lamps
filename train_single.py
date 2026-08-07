@@ -5,11 +5,16 @@ Example:
     $ python train_single.py --experiment "text-classification" \
         --dataset "CogComp/trec" \
         --objectives "model/size_billion,eval/neg_bleu" \
-        --total-timesteps 10e6 
-    
+        --total-timesteps 10e6
+
     $ python train_single.py --experiment "machine-translation" \
         --dataset "Helsinki-NLP/opus_books[en-es]" \
         --objectives "model/size_billion,eval/neg_bleu" \
+        --total-timesteps 10e6
+
+    $ python train_single.py --experiment "image-classification" \
+        --dataset "mtlbm/micro/set0/BRD" \
+        --objectives "model/size_billion,eval/log_loss" \
         --total-timesteps 10e6
 
 To follow the training progress, use TensorBoard:
