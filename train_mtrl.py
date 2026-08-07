@@ -8,6 +8,10 @@ Example:
     $ python train_mtrl.py --experiment "machine-translation" --total-timesteps 20e6 \
         --train-datasets "all" --eval-datasets "Helsinki-NLP/opus_books[en-es]" \
         --objectives "model/size_billion,eval/log_loss"
+
+    $ python train_mtrl.py --experiment "image-classification" --total-timesteps 20e6 \
+        --train-datasets "all" --eval-datasets "mtlbm/micro/set0/BCT" \
+        --objectives "model/size_billion,eval/log_loss"
 """
 
 import os
@@ -15,7 +19,7 @@ import random
 import argparse
 
 from stable_baselines3.common.callbacks import CallbackList
-from stable_baselines3.common.vec_env import SubprocVecEnv
+from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv
 from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.monitor import Monitor
 
@@ -43,6 +47,18 @@ parser.add_argument("--tb-log-name", type=str, default=None)
 parser.add_argument("--seed", type=int, default=settings.DEFAULT_SEED)
 parser.add_argument("--save-path", type=str, default=None)
 parser.add_argument("--device", type=str, default="auto")
+parser.add_argument(
+    "--vec-env",
+    type=str,
+    choices=["subproc", "dummy"],
+    default="subproc",
+)
+
+
+def build_vec_env(env_fns: list, vec_env: str):
+    if vec_env == "dummy":
+        return DummyVecEnv(env_fns)
+    return SubprocVecEnv(env_fns, start_method="spawn")
 
 
 def make_env(
@@ -194,7 +210,7 @@ def main():
     else:
         tb_log_name = parse_tb_log_name(args, train_datasets, eval_datasets)
 
-    train_envs = SubprocVecEnv(
+    train_envs = build_vec_env(
         [
             make_env(
                 args.experiment,
@@ -205,9 +221,9 @@ def main():
             )
             for dataset in train_datasets
         ],
-        start_method="spawn",
+        args.vec_env,
     )
-    eval_env = SubprocVecEnv(
+    eval_env = build_vec_env(
         [
             make_env(
                 args.experiment,
@@ -218,7 +234,7 @@ def main():
             )
             for dataset in eval_datasets
         ],
-        start_method="spawn",
+        args.vec_env,
     )
 
     callbacks = CallbackList(

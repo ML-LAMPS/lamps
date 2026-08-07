@@ -74,19 +74,17 @@ class Repository:
 
     @property
     def models(self):
-        _models = list(self.data.keys())
-        _models.sort()
-
-        return _models
+        return self._models
 
     @property
     def num_models(self):
-        return len(self.data.keys())
+        return len(self._models)
 
     def __init__(self, experiment: str, dataset: str, metrics: list[str]):
         self.experiment = experiment
         self.dataset = dataset
         self.metrics = metrics
+        self._models = []
         self.elapsed_time_prefix = {}
         self.total_model_runtime = {}
 
@@ -141,6 +139,7 @@ class Repository:
             data[model] = parse_tblogs(matches[0])
 
         self.data = data
+        self._models = sorted(self.data.keys())
         self._build_runtime_cache()
 
         return data

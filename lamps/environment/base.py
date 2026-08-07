@@ -112,6 +112,26 @@ class DatasetEnv(gym.Env):
         self.action_space = gym.spaces.Discrete(num_models)
 
         self.epoch_counts = np.zeros(num_models, dtype=np.int32)
+        self.available_epochs = np.array(
+            [self.repository.get_num_available_epochs(model) for model in self.models],
+            dtype=np.int32,
+        )
+
+        self.skip_models_mask = np.zeros(num_models, dtype=bool)
+        if self.skip_models_indices:
+            self.skip_models_mask[self.skip_models_indices] = True
+
+        self.runtime_prefix = [
+            np.asarray(self.repository.elapsed_time_prefix[model], dtype=np.float32)
+            for model in self.models
+        ]
+        self.objective_arrays = {
+            objective: [
+                np.asarray(self.repository.data[model][objective], dtype=np.float32)
+                for model in self.models
+            ]
+            for objective in self.objectives
+        }
 
     def _compute_ref_point(self, gap: float = 1.1):
         """
@@ -139,32 +159,49 @@ class DatasetEnv(gym.Env):
         super().reset(seed=seed, options=options)
 
         self.epoch_counts = np.zeros(self.num_models, dtype=np.int32)
+        valid_mask = self._compute_valid_mask()
 
-        observation = self.get_obs()
+        observation = self.get_obs(valid_mask)
         info = self.get_info()
 
         return observation, info
 
-    def get_obs(self):
-        current_runtime = np.array(
-            [
-                self.repository.get_elapsed_time(model, self.epoch_counts[i])
-                for i, model in enumerate(self.repository.models)
-            ]
+    def _compute_valid_mask(self) -> np.ndarray:
+        valid_mask = self.epoch_counts < self.available_epochs
+        if self.skip_models_indices:
+            valid_mask = valid_mask & (~self.skip_models_mask)
+        return valid_mask
+
+    def get_obs(self, valid_mask: np.ndarray | None = None):
+        if valid_mask is None:
+            valid_mask = self._compute_valid_mask()
+
+        current_runtime = np.fromiter(
+            (
+                self.runtime_prefix[i][epoch] if self.runtime_prefix[i].size else 0.0
+                for i, epoch in enumerate(self.epoch_counts)
+            ),
+            dtype=np.float32,
+            count=self.num_models,
         )
 
         obs = {
             "epochs": self.epoch_counts,
             "runtime": current_runtime,
-            "action_mask": np.array(self.action_masks(), dtype=np.float32),
+            "action_mask": valid_mask.astype(np.float32),
         }
 
         # Add objective metrics to observation
         for objective in self.objectives:
-            obs[objective] = [
-                self.repository.get_metric(model, objective, self.epoch_counts[i])
-                for i, model in enumerate(self.repository.models)
-            ]
+            objective_values = np.fromiter(
+                (
+                    self.objective_arrays[objective][i][epoch]
+                    for i, epoch in enumerate(self.epoch_counts)
+                ),
+                dtype=np.float32,
+                count=self.num_models,
+            )
+            obs[objective] = objective_values
 
         return obs
 
@@ -174,37 +211,34 @@ class DatasetEnv(gym.Env):
         }
 
     def num_remaining_models(self):
-        return self.action_masks().count(True)
+        return int(np.count_nonzero(self._compute_valid_mask()))
 
     def search_time(self):
-        total_time = 0.0
-        for i, model in enumerate(self.repository.models):
-            total_time += self.repository.get_elapsed_time(model, self.epoch_counts[i])
-
-        return total_time
+        return float(
+            np.sum(
+                np.fromiter(
+                    (
+                        (
+                            self.runtime_prefix[i][epoch]
+                            if self.runtime_prefix[i].size
+                            else 0.0
+                        )
+                        for i, epoch in enumerate(self.epoch_counts)
+                    ),
+                    dtype=np.float32,
+                    count=self.num_models,
+                )
+            )
+        )
 
     def valid_actions(self):
-        epochs_remaining = (
-            np.array(
-                [
-                    self.repository.get_num_available_epochs(model)
-                    for model in self.repository.models
-                ]
-            )
-            - self.epoch_counts
-        )
-        valid = np.where(epochs_remaining > 0)[0].tolist()
-        if self.skip_models_indices:
-            valid = [i for i in valid if i not in self.skip_models_indices]
-        return valid
+        return np.flatnonzero(self._compute_valid_mask()).tolist()
 
     def invalid_actions(self):
-        return list(set(range(self.num_models)) - set(self.valid_actions()))
+        return np.flatnonzero(~self._compute_valid_mask()).tolist()
 
     def action_masks(self) -> list[bool]:
-        mask = np.zeros(self.num_models, dtype=np.int8)
-        mask[self.valid_actions()] = 1
-        return mask.astype(bool).tolist()
+        return self._compute_valid_mask().tolist()
 
     def step(self, action):
         """
@@ -212,40 +246,53 @@ class DatasetEnv(gym.Env):
         """
         model_idx = int(action)
         model = self.models[model_idx]
+        valid_mask_before = self._compute_valid_mask()
 
-        assert (
-            model_idx in self.valid_actions()
-        ), f"Model {model} (action {model_idx}) is fully trained."
+        assert valid_mask_before[
+            model_idx
+        ], f"Model {model} (action {model_idx}) is fully trained."
 
         # Update epoch count
         self.epoch_counts[model_idx] += 1
+        valid_mask_after = self._compute_valid_mask()
 
-        reward = self.reward()
-        terminated = self.is_terminated()
+        terminated = self.is_terminated(valid_mask_after)
+        reward = self.reward(terminated, valid_mask_after)
         truncated = False
-        observation = self.get_obs()
+        observation = self.get_obs(valid_mask_after)
         info = self.get_info()
 
         return observation, reward, terminated, truncated, info
 
-    def reward(self):
+    def reward(
+        self, terminated: bool | None = None, valid_mask: np.ndarray | None = None
+    ):
 
-        if not self.is_terminated():
+        if terminated is None:
+            terminated = self.is_terminated(valid_mask)
+
+        if not terminated:
             return 0.0
 
         num_pareto_models = len(self.pareto_models)
+        if valid_mask is None:
+            valid_mask = self._compute_valid_mask()
+        num_completed_models = self.num_models - int(np.count_nonzero(valid_mask))
 
-        _reward = (self.num_models - self.num_completed_models) / self.search_time()
+        _reward = (self.num_models - num_completed_models) / self.search_time()
         _optimal = (self.num_models - num_pareto_models) / self.optimal_runtime
 
         return OPTIMAL_REWARD * (_reward / _optimal)
 
-    def is_terminated(self):
+    def is_terminated(self, valid_mask: np.ndarray | None = None):
         # return self.hypervolume() >= self.optimal_hv
 
         # FIXME: This condition is not ideal for slowly converging scenarios. Checking
         # the hypervolume is a better approach, but it requires a different reward.
-        return set(self.pareto_models_idx).issubset(self.invalid_actions())
+        if valid_mask is None:
+            valid_mask = self._compute_valid_mask()
+
+        return bool(np.all(~valid_mask[self.pareto_models_idx]))
 
     def hypervolume(self, only_finished: bool = False):
 
