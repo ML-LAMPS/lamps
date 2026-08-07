@@ -2,6 +2,8 @@ import pathlib
 
 BASE_DIR = pathlib.Path(__file__).parent.parent
 
+DEFAULT_SEED = 42
+
 PPO_HYPERPARAMS = {
     "learning_rate": 1e-4,
     "n_steps": 4096,

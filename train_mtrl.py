@@ -40,6 +40,9 @@ parser.add_argument("--study-name", type=str, default="")
 parser.add_argument("--skip-models", type=str)
 parser.add_argument("--skip-models-mode", type=str)
 parser.add_argument("--tb-log-name", type=str, default=None)
+parser.add_argument("--seed", type=int, default=settings.DEFAULT_SEED)
+parser.add_argument("--save-path", type=str, default=None)
+parser.add_argument("--device", type=str, default="auto")
 
 
 def make_env(
@@ -156,10 +159,18 @@ def main():
 
     train_datasets, eval_datasets = parse_train_eval_datasets(args)
 
-    _output_dir = os.path.join("mtrl", args.study_name)
+    if args.save_path is not None:
+        save_path = args.save_path
+        _tb_logs_sufix = os.path.relpath(
+            save_path, os.path.join("checkpoints", args.experiment)
+        )
+    else:
+        _tb_logs_sufix = os.path.join("mtrl", args.study_name)
+        save_path = get_checkpoint_save_path(
+            args.experiment, eval_datasets[0], _tb_logs_sufix
+        )
 
-    save_path = get_checkpoint_save_path(args.experiment, eval_datasets[0], _output_dir)
-    tensorboard_log = f"./tb_logs/{args.experiment}/{_output_dir}"
+    tensorboard_log = f"./tb_logs/{args.experiment}/{_tb_logs_sufix}"
 
     print(f"Training datasets: {train_datasets}")
     print(f"Evaluation datasets: {eval_datasets}")
@@ -226,15 +237,16 @@ def main():
         model = MaskablePPO.load(
             args.base_checkpoint,
             env=train_envs,
-            device="auto",
+            device=args.device,
             tensorboard_log=tensorboard_log,
         )
     else:
         model = MaskablePPO(
             policy="MultiInputPolicy",
             env=train_envs,
-            device="auto",
+            device=args.device,
             tensorboard_log=tensorboard_log,
+            seed=args.seed,
             **settings.PPO_HYPERPARAMS,
         )
 

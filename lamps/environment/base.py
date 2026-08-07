@@ -12,7 +12,12 @@ MAX_RUNTIME = 72 * 60 * 60.0  # 72 hours in seconds
 OPTIMAL_REWARD = 3000.0
 
 
-class TrainingDatasetEnv(gym.Env):
+class DatasetEnv(gym.Env):
+    """
+    Simulates the progressive training of a fixed pool of models on a dataset,
+    exposing an RL-friendly interface (obs/action spaces, reward, termination)
+    built on top of tensorboard logs stored in the repository.
+    """
 
     @property
     def models(self):
@@ -44,14 +49,12 @@ class TrainingDatasetEnv(gym.Env):
         dataset: str,
         objectives: dict,
         ref_point: list | None = None,
-        ablation: str | None = None,
         skip_models: list = [],
     ):
         self.repository = Repository(experiment, dataset, list(objectives.keys()))
 
         self.dataset = dataset
         self.objectives_data = objectives
-        self.ablation = ablation
         self.skip_models = skip_models
         self.skip_models_indices = [
             self.models.index(model) for model in self.skip_models
@@ -215,16 +218,7 @@ class TrainingDatasetEnv(gym.Env):
         ), f"Model {model} (action {model_idx}) is fully trained."
 
         # Update epoch count
-        if not self.ablation:
-            self.epoch_counts[model_idx] += 1
-
-        elif self.ablation == "no_landmark":
-            # Remove the landmark finetuning, which means that the model
-            # will be trained until convergence (with early stopping).
-            num_epochs = self.repository.get_num_available_epochs(model)
-            self.epoch_counts[model_idx] = num_epochs
-        else:
-            raise ValueError(f"Unknown ablation setting: {self.ablation}")
+        self.epoch_counts[model_idx] += 1
 
         reward = self.reward()
         terminated = self.is_terminated()
@@ -264,6 +258,11 @@ class TrainingDatasetEnv(gym.Env):
         datapoints = self.repository.datapoints(epoch_counts, preserve_best=True)
         hv = HV(ref_point=self.ref_point)
         hv_value = hv.do(datapoints)
+
+        if hv_value is None:
+            raise ValueError(
+                "Hypervolume calculation failed. Check if the reference point is set correctly."
+            )
 
         return hv_value
 
