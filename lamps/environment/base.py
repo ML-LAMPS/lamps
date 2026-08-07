@@ -90,14 +90,7 @@ class DatasetEnv(gym.Env):
 
         num_models = self.repository.num_models
 
-        obs_space = {
-            # "action_mask": gym.spaces.Box(
-            #     low=0,
-            #     high=1,
-            #     shape=(num_models,),
-            #     dtype=np.float32,
-            # ),
-        }
+        obs_space = {}
 
         for key, value in objectives.items():
             obs_space[key] = gym.spaces.Box(
@@ -112,11 +105,6 @@ class DatasetEnv(gym.Env):
 
         self.observation_space = gym.spaces.Dict(obs_space)
         self.action_space = gym.spaces.Discrete(num_models)
-
-        # self.available_epochs = np.array(
-        #     [self.repository.get_num_available_epochs(model) for model in self.models],
-        #     dtype=np.int32,
-        # )
 
         self.objective_arrays = {
             objective: [
@@ -161,8 +149,6 @@ class DatasetEnv(gym.Env):
 
         for observer in self.observers.values():
             observer.reset()
-
-        # valid_mask = self._compute_valid_mask()
 
         observation = self.get_obs(self.valid_mask)
         info = self.get_info()
