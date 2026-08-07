@@ -1,4 +1,5 @@
 import os
+import importlib
 
 
 def slugify(string):
@@ -19,3 +20,9 @@ def get_checkpoint_save_path(experiment, dataset, mode):
         save_path = f"{base_save_path}_{i}"
 
     return save_path
+
+
+def load_class(path: str):
+    module_name, class_name = path.rsplit(".", 1)
+    module = importlib.import_module(module_name)
+    return getattr(module, class_name)
