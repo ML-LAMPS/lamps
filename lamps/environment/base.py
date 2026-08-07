@@ -119,7 +119,6 @@ class DatasetEnv(gym.Env):
         self.observation_space = gym.spaces.Dict(obs_space)
         self.action_space = gym.spaces.Discrete(num_models)
 
-        self.epoch_counts = np.zeros(num_models, dtype=np.int32)
         self.available_epochs = np.array(
             [self.repository.get_num_available_epochs(model) for model in self.models],
             dtype=np.int32,
@@ -140,6 +139,10 @@ class DatasetEnv(gym.Env):
             ]
             for objective in self.objectives
         }
+
+    @property
+    def epoch_counts(self) -> np.ndarray:
+        return self.observers["epochs"].epoch_counts
 
     def _setup_observers(self, observers: list[str]):
 
