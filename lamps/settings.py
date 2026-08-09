@@ -34,6 +34,7 @@ OBSERVERS = (
     "lamps.observers.ActionMaskObserver",
     "lamps.observers.ModelSizeBillionObserver",
     "lamps.observers.EvalLogLossObserver",
+    "lamps.observers.ParetoDominanceObserver",
     # "lamps.observers.EvalNegBleuObserver",
     # "lamps.observers.EvalNegAccuracyObserver",
     # "lamps.observers.EvalNegF1MacroObserver",

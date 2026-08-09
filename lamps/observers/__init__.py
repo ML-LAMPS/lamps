@@ -6,6 +6,7 @@ from .eval_log_loss import EvalLogLossObserver
 from .eval_neg_bleu import EvalNegBleuObserver
 from .eval_neg_accuracy import EvalNegAccuracyObserver
 from .eval_neg_f1_macro import EvalNegF1MacroObserver
+from .pareto_dominance import ParetoDominanceObserver
 
 __all__ = [
     "EpochObserver",
@@ -16,4 +17,5 @@ __all__ = [
     "EvalNegBleuObserver",
     "EvalNegAccuracyObserver",
     "EvalNegF1MacroObserver",
+    "ParetoDominanceObserver",
 ]
