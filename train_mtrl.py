@@ -15,7 +15,6 @@ Example:
 """
 
 import os
-import random
 import argparse
 
 from stable_baselines3.common.callbacks import CallbackList
@@ -41,8 +40,6 @@ parser.add_argument(
     "--objectives", type=str, default="model/size_billion,eval/log_loss"
 )
 parser.add_argument("--study-name", type=str, default="")
-parser.add_argument("--skip-models", type=str)
-parser.add_argument("--skip-models-mode", type=str)
 parser.add_argument("--tb-log-name", type=str, default=None)
 parser.add_argument("--seed", type=int, default=settings.DEFAULT_SEED)
 parser.add_argument("--save-path", type=str, default=None)
@@ -65,8 +62,6 @@ def make_env(
     experiment: str,
     dataset: str,
     metrics: list,
-    skip_models: list | None = None,
-    datasets_to_skip_models: list | None = None,
 ):
 
     objectives = {metric: settings.OBJECTIVES[metric] for metric in metrics}
@@ -140,34 +135,6 @@ def parse_tb_log_name(args, train_datasets, eval_datasets):
     return log_name
 
 
-def parse_skip_models(args):
-    skip_models = []
-
-    if args.skip_models:
-        for entry in args.skip_models.split(","):
-            skip_models.append(entry.strip())
-
-    return skip_models
-
-
-def parse_skip_models_mode(args):
-
-    if not args.skip_models_mode:
-        return None
-
-    mode, params = args.skip_models_mode.split(":")
-
-    if "," in params:
-        params = [p.strip() for p in params.split(",")]
-    else:
-        params = params.strip()
-
-    return {
-        "mode": mode,
-        "params": params,
-    }
-
-
 def main():
     args = parser.parse_args()
 
@@ -191,20 +158,6 @@ def main():
     print(f"Training datasets: {train_datasets}")
     print(f"Evaluation datasets: {eval_datasets}")
 
-    skip_models = parse_skip_models(args)
-    skip_models_mode = parse_skip_models_mode(args)
-
-    if skip_models and skip_models_mode:
-        print(f"Skipping models: {skip_models} with mode: {skip_models_mode}")
-        if skip_models_mode["mode"] == "random":
-            num_to_skip = int(skip_models_mode["params"])
-            datasets_to_skip_models = random.sample(
-                train_datasets, min(num_to_skip, len(train_datasets))
-            )
-            print(f"Randomly selected datasets to skip: {datasets_to_skip_models}")
-    else:
-        datasets_to_skip_models = []
-
     if args.tb_log_name:
         tb_log_name = args.tb_log_name
     else:
@@ -216,8 +169,6 @@ def main():
                 args.experiment,
                 dataset,
                 metrics,
-                skip_models,
-                datasets_to_skip_models,
             )
             for dataset in train_datasets
         ],
@@ -229,8 +180,6 @@ def main():
                 args.experiment,
                 dataset,
                 metrics,
-                skip_models,
-                datasets_to_skip_models,
             )
             for dataset in eval_datasets
         ],
