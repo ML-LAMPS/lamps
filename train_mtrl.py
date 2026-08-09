@@ -17,6 +17,8 @@ Example:
 import os
 import argparse
 
+import numpy as np
+
 from stable_baselines3.common.callbacks import CallbackList
 from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv
 from stable_baselines3.common.callbacks import CheckpointCallback
@@ -24,6 +26,7 @@ from stable_baselines3.common.monitor import Monitor
 
 from sb3_contrib.ppo_mask import MaskablePPO
 from sb3_contrib.common.maskable.callbacks import MaskableEvalCallback
+from sb3_contrib.common.maskable.evaluation import evaluate_policy
 
 from lamps.environment import TrainingDatasetEnv
 from lamps.repository import Repository
@@ -34,6 +37,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--experiment", type=str, required=True)
 parser.add_argument("--train-datasets", type=str, required=True)
 parser.add_argument("--eval-datasets", type=str, required=True)
+parser.add_argument("--test-datasets", type=str, default=None)
 parser.add_argument("--total-timesteps", type=float, default=10e6)
 parser.add_argument("--base-checkpoint", type=str, default=None)
 parser.add_argument(
@@ -50,6 +54,32 @@ parser.add_argument(
     choices=["subproc", "dummy"],
     default="subproc",
 )
+
+
+class MaskableTestCallback(MaskableEvalCallback):
+    """MaskableEvalCallback that logs under `test/` instead of `eval/`, no checkpointing."""
+
+    def _on_step(self) -> bool:
+        if self.eval_freq > 0 and self.n_calls % self.eval_freq == 0:
+            self._is_success_buffer = []
+
+            episode_rewards, episode_lengths = evaluate_policy(
+                self.model,
+                self.eval_env,
+                n_eval_episodes=self.n_eval_episodes,
+                render=self.render,
+                deterministic=self.deterministic,
+                return_episode_rewards=True,
+                warn=self.warn,
+                callback=self._log_success_callback,
+                use_masking=self.use_masking,
+            )
+
+            self.logger.record("test/mean_reward", float(np.mean(episode_rewards)))
+            self.logger.record("test/mean_ep_length", float(np.mean(episode_lengths)))
+            self.logger.dump(self.num_timesteps)
+
+        return True
 
 
 def build_vec_env(env_fns: list, vec_env: str):
@@ -82,6 +112,7 @@ def make_env(
 def parse_train_eval_datasets(args):
     train_datasets = []
     eval_datasets = []
+    test_datasets = []
 
     all_datasets = Repository.list_datasets(experiment=args.experiment)
 
@@ -104,14 +135,24 @@ def parse_train_eval_datasets(args):
     else:
         eval_datasets = [ds.strip() for ds in args.eval_datasets.split(",")]
 
-    # Ensure no overlap between train and eval datasets
+    if args.test_datasets:
+        if args.test_datasets == "all":
+            test_datasets = all_datasets.copy()
+        else:
+            test_datasets = [ds.strip() for ds in args.test_datasets.split(",")]
+
+    # Ensure no overlap between train and eval/test datasets
     if args.train_datasets == "all":
-        train_datasets = [ds for ds in train_datasets if ds not in eval_datasets]
+        train_datasets = [
+            ds
+            for ds in train_datasets
+            if ds not in eval_datasets and ds not in test_datasets
+        ]
 
     if args.eval_datasets == "all":
         eval_datasets = [ds for ds in eval_datasets if ds not in train_datasets]
 
-    return train_datasets, eval_datasets
+    return train_datasets, eval_datasets, test_datasets
 
 
 def parse_tb_log_name(args, train_datasets, eval_datasets):
@@ -139,7 +180,7 @@ def main():
 
     metrics = args.objectives.split(",")
 
-    train_datasets, eval_datasets = parse_train_eval_datasets(args)
+    train_datasets, eval_datasets, test_datasets = parse_train_eval_datasets(args)
 
     if args.save_path is not None:
         save_path = args.save_path
@@ -156,6 +197,8 @@ def main():
 
     print(f"Training datasets: {train_datasets}")
     print(f"Evaluation datasets: {eval_datasets}")
+    if test_datasets:
+        print(f"Test datasets: {test_datasets}")
 
     if args.tb_log_name:
         tb_log_name = args.tb_log_name
@@ -185,16 +228,30 @@ def main():
         args.vec_env,
     )
 
-    callbacks = CallbackList(
-        [
-            CheckpointCallback(
-                save_freq=int(args.total_timesteps / len(train_datasets)) // 10,
-                save_path=save_path,
-                verbose=1,
-            ),
-            MaskableEvalCallback(eval_env=eval_env),
-        ]
-    )
+    callback_list = [
+        CheckpointCallback(
+            save_freq=int(args.total_timesteps / len(train_datasets)) // 10,
+            save_path=save_path,
+            verbose=1,
+        ),
+        MaskableEvalCallback(eval_env=eval_env),
+    ]
+
+    if test_datasets:
+        test_env = build_vec_env(
+            [
+                make_env(
+                    args.experiment,
+                    dataset,
+                    metrics,
+                )
+                for dataset in test_datasets
+            ],
+            args.vec_env,
+        )
+        callback_list.append(MaskableTestCallback(eval_env=test_env))
+
+    callbacks = CallbackList(callback_list)
 
     if args.base_checkpoint is not None:
         print(f"Loading base checkpoint from {args.base_checkpoint}")
