@@ -12,6 +12,14 @@ from lamps import utils
 OPTIMAL_REWARD = 3000.0
 
 
+def potential_shaping(
+    potential_before: float, potential_after: float, terminated: bool, gamma: float
+) -> float:
+    """Policy-invariant shaping term F_t = gamma*Phi(s_{t+1}) - Phi(s_t); Phi(terminal)=0."""
+    next_potential = 0.0 if terminated else potential_after
+    return gamma * next_potential - potential_before
+
+
 class DatasetEnv(gym.Env):
     """
     Simulates the progressive training of a fixed pool of models on a dataset,
@@ -65,9 +73,13 @@ class DatasetEnv(gym.Env):
         objectives: dict,
         ref_point: list | None = None,
         observers: list[str] | None = settings.OBSERVERS,
+        gamma: float = settings.PPO_HYPERPARAMS["gamma"],
+        shaping_scale: float = 0.02,
     ):
         self.repository = Repository(experiment, dataset, list(objectives.keys()))
 
+        self.gamma = gamma
+        self.shaping_scale = shaping_scale
         self.dataset = dataset
         self.objectives_data = objectives
         self.observers = {}
@@ -88,6 +100,9 @@ class DatasetEnv(gym.Env):
         self.pareto_models_idx = [
             self.models.index(model) for model in self.pareto_models
         ]
+        self.pareto_epoch_budget = int(
+            self.available_epochs[self.pareto_models_idx].sum()
+        )
 
         num_models = self.repository.num_models
 
@@ -192,6 +207,8 @@ class DatasetEnv(gym.Env):
             model_idx
         ], f"Model {model} (action {model_idx}) is fully trained."
 
+        potential_before = self.potential()
+
         for observer in self.observers.values():
             observer.step(action)
 
@@ -199,9 +216,15 @@ class DatasetEnv(gym.Env):
 
         terminated = self.is_terminated(valid_mask_after)
         reward = self.reward(terminated, valid_mask_after)
+        shaping_term = potential_shaping(
+            potential_before, self.potential(), terminated, self.gamma
+        )
         truncated = False
         observation = self.get_obs(valid_mask_after)
         info = self.get_info()
+        info["reward/unshaped"] = reward
+        info["reward/shaping"] = shaping_term
+        reward += shaping_term
 
         return observation, reward, terminated, truncated, info
 
@@ -234,6 +257,10 @@ class DatasetEnv(gym.Env):
             valid_mask = self.valid_mask
 
         return bool(np.all(~valid_mask[self.pareto_models_idx]))
+
+    def potential(self) -> float:
+        pareto_progress = int(self.epoch_counts[self.pareto_models_idx].sum())
+        return self.shaping_scale * OPTIMAL_REWARD * pareto_progress / self.pareto_epoch_budget
 
     def hypervolume(self, only_finished: bool = False):
 
