@@ -38,7 +38,11 @@ OBSERVERS = (
     # "lamps.observers.EvalNegBleuObserver",
     # "lamps.observers.EvalNegAccuracyObserver",
     # "lamps.observers.EvalNegF1MacroObserver",
+    # "lamps.observers.PerModelLogLossGPObserver",
 )
+
+REWARD = "lamps.rewards.SparseReward"
+# REWARD = "lamps.rewards.PotentialShapedReward"
 
 
 def objectives(metrics: list[str]):
