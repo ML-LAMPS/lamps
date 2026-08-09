@@ -3,14 +3,14 @@ Training script for multi-task reinforcement learning (MTRL) using MaskablePPO.
 
 Example:
     $ python train_mtrl.py --experiment "text-classification" --total-timesteps 10e6 \
-        --train-datasets "all" --eval-datasets "CogComp/trec"
+        --train-datasets "all" --val-datasets "CogComp/trec"
 
     $ python train_mtrl.py --experiment "machine-translation" --total-timesteps 10e6 \
-        --train-datasets "all" --eval-datasets "Helsinki-NLP/opus_books[en-es]" \
+        --train-datasets "all" --val-datasets "Helsinki-NLP/opus_books[en-es]" \
         --objectives "model/size_billion,eval/log_loss"
 
     $ python train_mtrl.py --experiment "image-classification" --total-timesteps 10e6 \
-        --train-datasets "all" --eval-datasets "mtlbm/micro/set0/BCT" \
+        --train-datasets "all" --val-datasets "mtlbm/micro/set0/BCT" \
         --objectives "model/size_billion,eval/log_loss"
 """
 
@@ -36,7 +36,7 @@ from lamps import settings
 parser = argparse.ArgumentParser()
 parser.add_argument("--experiment", type=str, required=True)
 parser.add_argument("--train-datasets", type=str, required=True)
-parser.add_argument("--eval-datasets", type=str, required=True)
+parser.add_argument("--val-datasets", type=str, required=True)
 parser.add_argument("--test-datasets", type=str, default=None)
 parser.add_argument("--total-timesteps", type=float, default=10e6)
 parser.add_argument("--base-checkpoint", type=str, default=None)
@@ -110,9 +110,9 @@ def make_env(
     return _init
 
 
-def parse_train_eval_datasets(args):
+def parse_datasets(args):
     train_datasets = []
-    eval_datasets = []
+    val_datasets = []
     test_datasets = []
 
     all_datasets = Repository.list_datasets(experiment=args.experiment)
@@ -131,10 +131,10 @@ def parse_train_eval_datasets(args):
 
             train_datasets.extend([ds_entry] * num_envs)
 
-    if args.eval_datasets == "all":
-        eval_datasets = all_datasets.copy()
+    if args.val_datasets == "all":
+        val_datasets = all_datasets.copy()
     else:
-        eval_datasets = [ds.strip() for ds in args.eval_datasets.split(",")]
+        val_datasets = [ds.strip() for ds in args.val_datasets.split(",")]
 
     if args.test_datasets:
         if args.test_datasets == "all":
@@ -142,21 +142,21 @@ def parse_train_eval_datasets(args):
         else:
             test_datasets = [ds.strip() for ds in args.test_datasets.split(",")]
 
-    # Ensure no overlap between train and eval/test datasets
+    # Ensure no overlap between train and val/test datasets
     if args.train_datasets == "all":
         train_datasets = [
             ds
             for ds in train_datasets
-            if ds not in eval_datasets and ds not in test_datasets
+            if ds not in val_datasets and ds not in test_datasets
         ]
 
-    if args.eval_datasets == "all":
-        eval_datasets = [ds for ds in eval_datasets if ds not in train_datasets]
+    if args.val_datasets == "all":
+        val_datasets = [ds for ds in val_datasets if ds not in train_datasets]
 
-    return train_datasets, eval_datasets, test_datasets
+    return train_datasets, val_datasets, test_datasets
 
 
-def parse_tb_log_name(args, train_datasets, eval_datasets):
+def parse_tb_log_name(args, train_datasets, val_datasets):
     log_name = "train="
 
     if args.train_datasets == "all":
@@ -165,13 +165,13 @@ def parse_tb_log_name(args, train_datasets, eval_datasets):
         _train_datasets = [slugify(ds) for ds in set(train_datasets)]
         log_name += ",".join(_train_datasets)
 
-    log_name += " | eval="
+    log_name += " | val="
 
-    if args.eval_datasets == "all":
+    if args.val_datasets == "all":
         log_name += "all"
     else:
-        _eval_datasets = [slugify(ds) for ds in eval_datasets]
-        log_name += ",".join(_eval_datasets)
+        _val_datasets = [slugify(ds) for ds in val_datasets]
+        log_name += ",".join(_val_datasets)
 
     return log_name
 
@@ -181,7 +181,7 @@ def main():
 
     metrics = args.objectives.split(",")
 
-    train_datasets, eval_datasets, test_datasets = parse_train_eval_datasets(args)
+    train_datasets, val_datasets, test_datasets = parse_datasets(args)
 
     if args.save_path is not None:
         save_path = args.save_path
@@ -191,20 +191,20 @@ def main():
     else:
         _tb_logs_sufix = os.path.join("mtrl", args.study_name)
         save_path = get_checkpoint_save_path(
-            args.experiment, eval_datasets[0], _tb_logs_sufix
+            args.experiment, val_datasets[0], _tb_logs_sufix
         )
 
     tensorboard_log = f"./tb_logs/{args.experiment}/{_tb_logs_sufix}"
 
     print(f"Training datasets: {train_datasets}")
-    print(f"Evaluation datasets: {eval_datasets}")
+    print(f"Validation datasets: {val_datasets}")
     if test_datasets:
         print(f"Test datasets: {test_datasets}")
 
     if args.tb_log_name:
         tb_log_name = args.tb_log_name
     else:
-        tb_log_name = parse_tb_log_name(args, train_datasets, eval_datasets)
+        tb_log_name = parse_tb_log_name(args, train_datasets, val_datasets)
 
     train_envs = build_vec_env(
         [
@@ -217,14 +217,14 @@ def main():
         ],
         args.vec_env,
     )
-    eval_env = build_vec_env(
+    val_env = build_vec_env(
         [
             make_env(
                 args.experiment,
                 dataset,
                 metrics,
             )
-            for dataset in eval_datasets
+            for dataset in val_datasets
         ],
         args.vec_env,
     )
@@ -235,7 +235,7 @@ def main():
             save_path=save_path,
             verbose=1,
         ),
-        MaskableEvalCallback(eval_env=eval_env),
+        MaskableEvalCallback(eval_env=val_env),
     ]
 
     if test_datasets:
