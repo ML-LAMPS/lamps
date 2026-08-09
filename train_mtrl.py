@@ -72,12 +72,12 @@ def make_env(
     objectives = {metric: settings.OBJECTIVES[metric] for metric in metrics}
 
     def _init():
-        env = TrainingDatasetEnv(
-            experiment=experiment,
-            dataset=dataset,
-            objectives=objectives,
-            skip_models=skip_models if dataset in datasets_to_skip_models else [],
-        )
+        env_kwargs = {
+            "experiment": experiment,
+            "dataset": dataset,
+            "objectives": objectives,
+        }
+        env = TrainingDatasetEnv(**env_kwargs)
         env = Monitor(env)
 
         return env

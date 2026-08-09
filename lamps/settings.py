@@ -37,6 +37,7 @@ OBSERVERS = (
     # "lamps.observers.EvalNegBleuObserver",
     # "lamps.observers.EvalNegAccuracyObserver",
     # "lamps.observers.EvalNegF1MacroObserver",
+    # "lamps.observers.PerModelLogLossGPObserver",
 )
 
 
