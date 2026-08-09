@@ -5,9 +5,9 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from lamps.independent_loss import CACHE_KIND, cache_path
 from lamps.observers.per_model_log_loss_gp import PerModelLogLossGPObserver
-from lamps.posterior_cache import LogLossPosteriorCache
+from lamps.observers.per_model_log_loss_gp.independent_loss import CACHE_KIND, cache_path
+from lamps.observers.per_model_log_loss_gp.posterior_cache import LogLossPosteriorCache
 
 
 class PosteriorCacheTest(unittest.TestCase):

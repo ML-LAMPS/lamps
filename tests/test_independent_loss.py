@@ -2,7 +2,10 @@ import unittest
 
 import numpy as np
 
-from lamps.independent_loss import IndependentLossCurveGP, precompute_curve
+from lamps.observers.per_model_log_loss_gp.independent_loss import (
+    IndependentLossCurveGP,
+    precompute_curve,
+)
 
 
 class IndependentLossCurveTest(unittest.TestCase):

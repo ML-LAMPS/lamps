@@ -4,10 +4,10 @@ from pathlib import Path
 import gymnasium as gym
 import numpy as np
 
-from lamps.independent_loss import CACHE_KIND, DEFAULT_CACHE_DIR, cache_path
-from lamps.posterior_cache import LogLossPosteriorCache
+from .independent_loss import CACHE_KIND, DEFAULT_CACHE_DIR, cache_path
+from .posterior_cache import LogLossPosteriorCache
 
-from .base import BaseObserver
+from ..base import BaseObserver
 
 
 class PerModelLogLossGPObserver(BaseObserver):

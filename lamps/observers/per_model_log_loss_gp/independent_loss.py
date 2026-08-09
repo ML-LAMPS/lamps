@@ -5,7 +5,7 @@ from pathlib import Path
 
 import numpy as np
 
-from lamps.posterior_cache import posterior_cache_path
+from .posterior_cache import posterior_cache_path
 
 
 DEFAULT_CACHE_DIR = Path(".cache/per_model_log_loss_gp")

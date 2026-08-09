@@ -6,14 +6,14 @@ from pathlib import Path
 
 import numpy as np
 
-from lamps.independent_loss import (
+from lamps.observers.per_model_log_loss_gp.independent_loss import (
     CACHE_KIND,
     DEFAULT_CACHE_DIR,
     IndependentLossCurveGP,
     cache_path,
     precompute_curve,
 )
-from lamps.posterior_cache import LogLossPosteriorCache
+from lamps.observers.per_model_log_loss_gp.posterior_cache import LogLossPosteriorCache
 from lamps.repository import Repository
 
 
