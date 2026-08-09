@@ -40,6 +40,9 @@ OBSERVERS = (
     # "lamps.observers.PerModelLogLossGPObserver",
 )
 
+REWARD = "lamps.rewards.SparseReward"
+# REWARD = "lamps.rewards.PotentialShapedReward"
+
 
 def objectives(metrics: list[str]):
     return {metric: OBJECTIVES[metric] for metric in metrics}

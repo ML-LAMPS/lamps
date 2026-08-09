@@ -1,6 +1,6 @@
 import unittest
 
-from lamps.environment.base import potential_shaping
+from lamps.rewards.potential_shaped import potential_shaping
 
 
 class PotentialShapingTest(unittest.TestCase):
