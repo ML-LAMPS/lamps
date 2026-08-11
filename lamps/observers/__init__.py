@@ -9,6 +9,7 @@ from .eval_neg_f1_macro import EvalNegF1MacroObserver
 from .pareto_dominance import ParetoDominanceObserver
 from .per_model_log_loss_gp import PerModelLogLossGPObserver
 from .log_loss_dynamics import LogLossDynamicsObserver
+from .crowding_distance import CrowdingDistanceObserver
 
 __all__ = [
     "EpochObserver",
@@ -22,4 +23,5 @@ __all__ = [
     "ParetoDominanceObserver",
     "PerModelLogLossGPObserver",
     "LogLossDynamicsObserver",
+    "CrowdingDistanceObserver",
 ]
