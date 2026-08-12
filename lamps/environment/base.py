@@ -64,6 +64,7 @@ class DatasetEnv(gym.Env):
         ref_point: list | None = None,
         observers: list[str] | None = settings.OBSERVERS,
         reward: str | None = settings.REWARD,
+        reward_kwargs: dict | None = None,
     ):
         self.repository = Repository(experiment, dataset, list(objectives.keys()))
 
@@ -87,7 +88,7 @@ class DatasetEnv(gym.Env):
         self.pareto_models_idx = [
             self.models.index(model) for model in self.pareto_models
         ]
-        self.reward_fn = utils.load_class(reward)(self)
+        self.reward_fn = utils.load_class(reward)(self, **(reward_kwargs or {}))
 
         num_models = self.repository.num_models
 

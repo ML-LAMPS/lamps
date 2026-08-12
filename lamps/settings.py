@@ -40,6 +40,7 @@ OBSERVERS = (
     # "lamps.observers.ParetoDominanceObserver",
     # "lamps.observers.LogLossDynamicsObserver",
     # "lamps.observers.PerModelLogLossGPObserver",
+    # "lamps.observers.CrowdingDistanceObserver",
 )
 
 REWARD = "lamps.rewards.SparseReward"
