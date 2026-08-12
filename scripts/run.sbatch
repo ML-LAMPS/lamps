@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH -t 0-48:00:00
+#SBATCH -t 0-72:00:00
 #SBATCH --mem=2G
 #SBATCH -J LAMPS
 #SBATCH --mail-type=END,FAIL,TIME_LIMIT
