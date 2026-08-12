@@ -60,12 +60,48 @@ python -m lamps.hpo.hpo_mtrl \
   --storage "sqlite:///hpo_mtrl.db"
 ```
 
+```bash
+sbatch -J RUN1 --partition=haswell-256 --cpus-per-task=16 --mem=16G scripts/run.sbatch \
+python -m lamps.hpo.hpo_mtrl \
+  --experiment image-classification \
+  --train-datasets "all" \
+  --val-datasets "mtlbm/micro/set0/BCT" \
+  --n-trials 50 \
+  --timesteps-per-trial 10e6 \
+  --study-name lamps-hpo \
+  --storage "sqlite:///hpo_mtrl.db"
+```
+
 Run this **from the repo root** (same directory as `train_mtrl.py`) using
 `-m`, not a file path — `--storage`/`--tb-logs-dir` paths and `make_env`'s
 repository lookups are relative to the repo root, and `-m` is what keeps
 `train_mtrl.py` importable from a script that now lives two directories
 deeper (`python lamps/hpo/hpo_mtrl.py ...` will fail with
 `ModuleNotFoundError: No module named 'lamps'`).
+
+### Running independent parallel workers
+
+To speed the search up, launch several of the `sbatch` jobs above at once —
+all pointed at the **same `--storage` and `--study-name`** — and Optuna
+coordinates them through that shared file (`load_if_exists=True` means every
+worker joins the same study instead of starting a fresh one).
+
+The one thing to get right: **don't pass `--sampler-seed`.** It defaults to
+unset (OS-random per process) specifically so each independent worker's
+sampler diverges. If you fix it to the same number across workers (or reuse
+`--seed`, which the script used to do before this was split out), every
+worker's sampler starts from an identical RNG state and — since that state
+isn't synchronized through storage, only completed trials are — they'll
+each propose the *same* early hyperparameters instead of exploring
+different ones, defeating the point of running them in parallel. `--seed`
+(the PPO training seed) is fine to leave fixed across workers; that's a
+different concern and keeping it constant makes trials comparable on
+hyperparameters alone rather than on training-run luck.
+
+SQLite handles a modest number of concurrent workers fine for this use case
+(each trial only writes once, at completion or pruning). If you scale up to
+dozens of simultaneous workers and see write-lock contention, that's the
+point to move `--storage` to a real RDB (Postgres/MySQL) instead.
 
 ### Key arguments
 
@@ -79,6 +115,8 @@ deeper (`python lamps/hpo/hpo_mtrl.py ...` will fail with
 | `--tail-evals` | `10` | How many trailing eval points define "converged" performance for the objectives (see below). |
 | `--vec-env` | `dummy` | Deliberately different from `train_mtrl.py`'s `subproc` default — spawning a fresh process pool per trial across dozens of trials is mostly overhead. Switch to `subproc` only if your envs are slow enough to need it. |
 | `--study-name` / `--storage` | `lamps-hpo` / `None` | Set `--storage` to something like `sqlite:///hpo_mtrl.db` to persist and enable the dashboard. |
+| `--sampler-seed` | `None` | Seed for the Optuna sampler *only*. Leave unset when running multiple parallel workers (see above) — that's what makes their sampling diverge instead of colliding. Set it explicitly only for a single-worker run you want to be reproducible. |
+| `--seed` | `settings.DEFAULT_SEED` | PPO/env training seed, independent of `--sampler-seed`. Fine to keep fixed across workers. |
 | `--tb-logs-dir` | `tb_logs_hpo` | Base folder for per-trial TensorBoard logs (kept separate from `train_mtrl.py`'s `tb_logs`). Each trial writes to `{tb_logs_dir}/{experiment}/{study_name}/trial_{N}_1/`. |
 
 ## Watching progress

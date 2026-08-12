@@ -58,6 +58,16 @@ parser.add_argument("--eval-freq", type=int, default=10000)
 parser.add_argument("--n-eval-episodes", type=int, default=20)
 parser.add_argument("--tail-evals", type=int, default=10)
 parser.add_argument("--seed", type=int, default=settings.DEFAULT_SEED)
+parser.add_argument(
+    "--sampler-seed",
+    type=int,
+    default=None,
+    help=(
+        "Seed for the Optuna sampler only. Leave unset (default) when running "
+        "multiple independent workers against the same --storage, so each "
+        "worker's sampler RNG diverges instead of proposing identical trials."
+    ),
+)
 parser.add_argument("--device", type=str, default="auto")
 parser.add_argument(
     "--vec-env", type=str, choices=["subproc", "dummy"], default="dummy"
@@ -250,7 +260,7 @@ def main():
         storage=args.storage,
         load_if_exists=True,
         directions=["maximize", "minimize"],
-        sampler=optuna.samplers.NSGAIISampler(seed=args.seed),
+        sampler=optuna.samplers.NSGAIISampler(seed=args.sampler_seed),
     )
     study.optimize(objective, n_trials=args.n_trials)
 
