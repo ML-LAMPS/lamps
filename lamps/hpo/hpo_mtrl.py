@@ -1,10 +1,15 @@
 """
 Multi-objective hyperparameter optimization for train_mtrl.py using Optuna.
 
-Observers are held fixed (settings.OBSERVERS); this searches over PPO
-optimization hyperparameters, the reward function (and its own
-hyperparameters), and policy network architecture. The study optimizes two
-objectives jointly rather than a single scalarized score:
+The base observers in settings.OBSERVERS (epochs, runtime, action mask, and
+the two objective-value observers) are held fixed - removing any of those
+would just blind the policy to something it needs. On top of that, four
+independently-optional feature observers (ParetoDominanceObserver,
+LogLossDynamicsObserver, PerModelLogLossGPObserver, CrowdingDistanceObserver)
+are searched as independent booleans, alongside PPO optimization
+hyperparameters, the reward function (and its own hyperparameters), and
+policy network architecture. The study optimizes two objectives jointly
+rather than a single scalarized score:
 
     1. maximize: mean validation reward over the trailing evaluations
     2. minimize: instability = std(trailing validation reward)
@@ -22,6 +27,14 @@ built-in mid-training pruning here. lamps.hpo.ManualMedianPruner reimplements
 the same idea by hand, using only optuna.TrialPruned (which multi-objective
 studies do support), to keep the search from spending a full trial's budget
 on hyperparameters that are already trailing.
+
+Note: PerModelLogLossGPObserver requires a precomputed GP-posterior cache on
+disk per dataset (see
+lamps/observers/per_model_log_loss_gp/precompute_independent_loss.py); a
+trial that samples it in for a dataset without that cache will raise
+FileNotFoundError. study.optimize() below is run with catch=(Exception,) so
+that - or any other single-trial failure - fails just that trial rather than
+ending the whole sweep.
 
 Example (run from the repo root, so train_mtrl.py stays importable):
     $ python -m lamps.hpo.hpo_mtrl --experiment "image-classification" \
@@ -119,6 +132,25 @@ class TrialEvalCallback(MaskableEvalCallback):
         return True
 
 
+OPTIONAL_OBSERVERS = (
+    "lamps.observers.ParetoDominanceObserver",
+    "lamps.observers.LogLossDynamicsObserver",
+    "lamps.observers.PerModelLogLossGPObserver",
+    "lamps.observers.CrowdingDistanceObserver",
+)
+
+
+def sample_observers(trial: optuna.Trial) -> list[str]:
+    observers: list[str] = list(settings.OBSERVERS)
+
+    for observer in OPTIONAL_OBSERVERS:
+        name = observer.rsplit(".", 1)[-1]
+        if trial.suggest_categorical(f"use_{name}", [True, False]):
+            observers.append(observer)
+
+    return observers
+
+
 def sample_reward(trial: optuna.Trial) -> tuple[str, dict]:
     reward_name = trial.suggest_categorical("reward", ["sparse", "potential_shaped"])
 
@@ -194,23 +226,31 @@ class Objective:
         reward, reward_kwargs = sample_reward(trial)
         ppo_kwargs = sample_ppo_kwargs(trial)
         policy_kwargs = sample_policy_kwargs(trial)
+        observers = sample_observers(trial)
 
-        train_envs = build_vec_env(
-            [
-                make_env(args.experiment, dataset, self.metrics, reward, reward_kwargs)
-                for dataset in self.train_datasets
-            ],
-            args.vec_env,
-        )
-        val_env = build_vec_env(
-            [
-                make_env(args.experiment, dataset, self.metrics, reward, reward_kwargs)
-                for dataset in self.val_datasets
-            ],
-            args.vec_env,
-        )
+        train_envs = None
+        val_env = None
 
         try:
+            train_envs = build_vec_env(
+                [
+                    make_env(
+                        args.experiment, dataset, self.metrics, reward, reward_kwargs, observers
+                    )
+                    for dataset in self.train_datasets
+                ],
+                args.vec_env,
+            )
+            val_env = build_vec_env(
+                [
+                    make_env(
+                        args.experiment, dataset, self.metrics, reward, reward_kwargs, observers
+                    )
+                    for dataset in self.val_datasets
+                ],
+                args.vec_env,
+            )
+
             model = MaskablePPO(
                 policy="MultiInputPolicy",
                 env=train_envs,
@@ -235,8 +275,10 @@ class Objective:
                 progress_bar=False,
             )
         finally:
-            train_envs.close()
-            val_env.close()
+            if train_envs is not None:
+                train_envs.close()
+            if val_env is not None:
+                val_env.close()
 
         if callback.diverged:
             raise optuna.TrialPruned("Validation reward diverged (non-finite).")
@@ -262,7 +304,7 @@ def main():
         directions=["maximize", "minimize"],
         sampler=optuna.samplers.NSGAIISampler(seed=args.sampler_seed),
     )
-    study.optimize(objective, n_trials=args.n_trials)
+    study.optimize(objective, n_trials=args.n_trials, catch=(Exception,))
 
     print(f"\nPareto front ({len(study.best_trials)} trials):")
     for trial in study.best_trials:

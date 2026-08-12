@@ -94,6 +94,7 @@ def make_env(
     metrics: list,
     reward: str | None = settings.REWARD,
     reward_kwargs: dict | None = None,
+    observers: list[str] | None = settings.OBSERVERS,
 ):
 
     objectives = {metric: settings.OBJECTIVES[metric] for metric in metrics}
@@ -105,6 +106,7 @@ def make_env(
             "objectives": objectives,
             "reward": reward,
             "reward_kwargs": reward_kwargs,
+            "observers": observers,
         }
         env = TrainingDatasetEnv(**env_kwargs)
         env = Monitor(env)

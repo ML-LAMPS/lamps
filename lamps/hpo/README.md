@@ -1,10 +1,8 @@
 # Hyperparameter Optimization (HPO)
 
 This package holds `hpo_mtrl.py`, the Optuna study that searches for
-PPO/reward/network hyperparameters that are both **stable** and
-**high-performing** on held-out validation data. Observers are held fixed
-for this study — only optimization hyperparameters, the reward function,
-and the policy network architecture are searched.
+PPO/reward/network/observer hyperparameters that are both **stable** and
+**high-performing** on held-out validation data.
 
 ## What's in `lamps/hpo/`
 
@@ -29,12 +27,42 @@ and the policy network architecture are searched.
 | PPO stability | `ent_coef`, `learning_rate`, `clip_range`, `gae_lambda`, `normalize_advantage` |
 | Reward | `SparseReward` vs. `PotentialShapedReward` (+ `shaping_scale` if the latter) |
 | Network | `net_arch` size (small/medium/large), shared vs. separate pi/vf networks, `share_features_extractor`, optional `weight_decay` |
+| Observers | Four independent booleans: `ParetoDominanceObserver`, `LogLossDynamicsObserver`, `PerModelLogLossGPObserver`, `CrowdingDistanceObserver` — see below before including the third one |
 
-`gamma` and the observer set are deliberately **not** searched:
-`PotentialShapedReward`'s shaping term assumes the same discount as PPO's own
-`gamma`, so tuning one without the other would silently break the
-policy-invariance guarantee the reward relies on. Observers were fixed by
-request for this round.
+`settings.OBSERVERS` (epochs, runtime, action mask, and the two
+objective-value observers) stays fixed underneath these four — those aren't
+optional, `DatasetEnv` depends on some of them structurally and the others
+are literally what the reward is scored on, so there's no real hypothesis to
+test by removing them. The four above are independently-developed features
+with a genuine "does this help or hurt" question behind each, so they're
+searched as independent booleans rather than combinatorially — same
+reasoning as the hyperparameters above: trust the sampler over enumerating
+all 16 combinations.
+
+`gamma` is deliberately **not** searched: `PotentialShapedReward`'s shaping
+term assumes the same discount as PPO's own `gamma`, so tuning one without
+the other would silently break the policy-invariance guarantee the reward
+relies on.
+
+### Prerequisite: precompute the GP-posterior cache
+
+`PerModelLogLossGPObserver` needs a precomputed cache file per dataset (see
+`lamps/observers/per_model_log_loss_gp/`). A trial that samples it in for a
+dataset without that cache raises `FileNotFoundError` during env
+construction — `study.optimize()` is run with `catch=(Exception,)`, so that
+just fails the one trial rather than the whole sweep, but you'd still rather
+not waste trials that way. Build the cache once, for every dataset in the
+experiment, before running the sweep:
+
+```bash
+python -m lamps.observers.per_model_log_loss_gp.precompute_independent_loss \
+  --experiment image-classification \
+  --datasets "all"
+```
+
+Run this from the repo root too, so the cache lands at the default
+`.cache/per_model_log_loss_gp/` path both this script and the observer agree
+on without needing to pass `cache_dir` explicitly anywhere.
 
 ## Requirements
 
@@ -44,10 +72,20 @@ you haven't already.
 
 ## Running a sweep
 
-Use **persistent storage** (SQLite is enough for a single-machine run) so you
-can watch progress live and resume later — the default in-memory storage
-disappears when the process exits and can't be attached to from another
-process:
+First, build the GP-posterior cache once for the experiment (see above —
+this is what lets `use_PerModelLogLossGPObserver: True` trials succeed
+instead of failing):
+
+```bash
+python -m lamps.observers.per_model_log_loss_gp.precompute_independent_loss \
+  --experiment image-classification \
+  --datasets "all"
+```
+
+Then use **persistent storage** (SQLite is enough for a single-machine run)
+so you can watch progress live and resume later — the default in-memory
+storage disappears when the process exits and can't be attached to from
+another process:
 
 ```bash
 python -m lamps.hpo.hpo_mtrl \
@@ -177,6 +215,10 @@ trial's `params` need to be applied by hand before a full verification run:
   `normalize_advantage` → update `lamps/settings.py`'s `PPO_HYPERPARAMS`.
 - `reward` → update `lamps/settings.py`'s `REWARD` to
   `"lamps.rewards.SparseReward"` or `"lamps.rewards.PotentialShapedReward"`.
+- `use_ParetoDominanceObserver`, `use_LogLossDynamicsObserver`,
+  `use_PerModelLogLossGPObserver`, `use_CrowdingDistanceObserver` →
+  uncomment (or leave commented) the matching line in `lamps/settings.py`'s
+  `OBSERVERS` tuple to match each boolean.
 - `shaping_scale`, and the network architecture params (`net_arch`,
   `separate_networks`, `share_features_extractor`, `weight_decay`) aren't
   wired into `train_mtrl.py`'s CLI or `settings.py` at all yet — applying
