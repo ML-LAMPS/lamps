@@ -9,16 +9,20 @@ LogLossDynamicsObserver, PerModelLogLossGPObserver, CrowdingDistanceObserver)
 are searched as independent booleans, alongside PPO optimization
 hyperparameters, the reward function (and its own hyperparameters), and
 policy network architecture. The study optimizes two objectives jointly
-rather than a single scalarized score:
+rather than a single scalarized score, both computed from validation
+episode length rather than validation reward - reward is not comparable
+across trials here, since the reward function itself (and its scale) is one
+of the things being searched over, while episode length directly measures
+search efficiency regardless of which reward trained the policy:
 
-    1. maximize: mean validation reward over the trailing evaluations
-    2. minimize: instability = std(trailing validation reward)
-                              + max(0, peak_val_reward - trailing_mean)
+    1. minimize: mean validation episode length over the trailing evaluations
+    2. minimize: instability = std(trailing episode length)
+                              + max(0, trailing_mean - best_ep_length)
 
 The second term is the study's "generalization stability" objective: std
 alone doesn't distinguish healthy noise from a policy that overfits the
 training distribution and degrades on held-out data, so an explicit
-peak-vs-tail gap is added on top of it. Test datasets are never touched by
+best-vs-tail gap is added on top of it. Test datasets are never touched by
 the study - only used, once, to report the final chosen configuration.
 
 Note: Optuna's Trial.report()/should_prune() raise NotImplementedError for
@@ -91,7 +95,13 @@ parser.add_argument("--tb-logs-dir", type=str, default="tb_logs_hpo")
 
 
 class TrialEvalCallback(MaskableEvalCallback):
-    """Records per-eval validation reward for the HPO objective and logs it to TB."""
+    """Records per-eval validation episode length for the HPO objective and logs to TB.
+
+    Episode length, not reward, drives the objective/pruning: the reward
+    function (and its scale) is itself being searched, so raw reward isn't
+    comparable across trials, while episode length directly measures search
+    efficiency regardless of which reward trained the policy.
+    """
 
     def __init__(self, *args, pruner: ManualMedianPruner, **kwargs):
         super().__init__(*args, **kwargs)
@@ -112,22 +122,23 @@ class TrialEvalCallback(MaskableEvalCallback):
                 use_masking=self.use_masking,
             )
             mean_reward = float(np.mean(episode_rewards))
+            mean_ep_length = float(np.mean(episode_lengths))
 
-            if not np.isfinite(mean_reward):
+            if not np.isfinite(mean_reward) or not np.isfinite(mean_ep_length):
                 self.diverged = True
                 return False
 
             self.logger.record("val/mean_reward", mean_reward)
-            self.logger.record("val/mean_ep_length", float(np.mean(episode_lengths)))
+            self.logger.record("val/mean_ep_length", mean_ep_length)
             self.logger.dump(self.num_timesteps)
 
             eval_index = len(self.history)
 
-            if self.pruner.should_prune(eval_index, mean_reward):
+            if self.pruner.should_prune(eval_index, mean_ep_length):
                 self.pruned = True
                 return False
 
-            self.history.append(mean_reward)
+            self.history.append(mean_ep_length)
 
         return True
 
@@ -203,13 +214,16 @@ def sample_policy_kwargs(trial: optuna.Trial) -> dict:
 
 
 def compute_objectives(history: list[float], tail_evals: int) -> tuple[float, float]:
+    """Both returned values are minimized: mean trailing episode length, and
+    instability = std(trailing episode length) + max(0, trailing_mean - best_ep_length).
+    """
     if not history:
-        return float("-1e6"), float("1e6")
+        return float("1e6"), float("1e6")
 
     tail = history[-tail_evals:] if len(history) >= tail_evals else history
     tail_mean = float(np.mean(tail))
     tail_std = float(np.std(tail))
-    overfitting_gap = max(0.0, float(np.max(history)) - tail_mean)
+    overfitting_gap = max(0.0, tail_mean - float(np.min(history)))
 
     return tail_mean, tail_std + overfitting_gap
 
@@ -281,10 +295,10 @@ class Objective:
                 val_env.close()
 
         if callback.diverged:
-            raise optuna.TrialPruned("Validation reward diverged (non-finite).")
+            raise optuna.TrialPruned("Validation reward or episode length diverged (non-finite).")
 
         if callback.pruned:
-            raise optuna.TrialPruned("Below the historical median at an early checkpoint.")
+            raise optuna.TrialPruned("Worse than the historical median at an early checkpoint.")
 
         self.pruner.record_completed_trial(callback.history)
 
@@ -294,14 +308,14 @@ class Objective:
 def main():
     args = parser.parse_args()
 
-    pruner = ManualMedianPruner()
+    pruner = ManualMedianPruner(direction="minimize")
     objective = Objective(args, pruner)
 
     study = optuna.create_study(
         study_name=args.study_name,
         storage=args.storage,
         load_if_exists=True,
-        directions=["maximize", "minimize"],
+        directions=["minimize", "minimize"],
         sampler=optuna.samplers.NSGAIISampler(seed=args.sampler_seed),
     )
     study.optimize(objective, n_trials=args.n_trials, catch=(Exception,))
@@ -310,7 +324,7 @@ def main():
     for trial in study.best_trials:
         print(
             f"  trial={trial.number} "
-            f"tail_mean_reward={trial.values[0]:.2f} "
+            f"tail_mean_ep_length={trial.values[0]:.2f} "
             f"instability={trial.values[1]:.2f} "
             f"params={trial.params}"
         )

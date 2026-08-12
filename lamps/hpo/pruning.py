@@ -18,10 +18,15 @@ class ManualMedianPruner:
         n_warmup_evals: int = 3,
         n_startup_trials: int = 5,
         percentile: float = 50.0,
+        direction: str = "maximize",
     ):
+        if direction not in ("maximize", "minimize"):
+            raise ValueError("direction must be 'maximize' or 'minimize'")
+
         self.n_warmup_evals = n_warmup_evals
         self.n_startup_trials = n_startup_trials
         self.percentile = percentile
+        self.direction = direction
         self.history: dict[int, list[float]] = {}
         self.num_completed_trials = 0
 
@@ -36,7 +41,10 @@ class ManualMedianPruner:
             return False
 
         threshold = np.percentile(past_values, self.percentile)
-        return value < threshold
+
+        if self.direction == "maximize":
+            return value < threshold
+        return value > threshold
 
     def record_completed_trial(self, values_by_eval_index: list[float]) -> None:
         for eval_index, value in enumerate(values_by_eval_index):

@@ -32,6 +32,21 @@ class ManualMedianPrunerTest(unittest.TestCase):
         self.assertTrue(pruner.should_prune(eval_index=0, value=1.0))
         self.assertEqual(pruner.history[0], [10.0])
 
+    def test_rejects_invalid_direction(self):
+        with self.assertRaisesRegex(ValueError, "direction"):
+            ManualMedianPruner(direction="sideways")
+
+    def test_minimize_direction_prunes_above_historical_median(self):
+        pruner = ManualMedianPruner(
+            n_warmup_evals=0, n_startup_trials=0, direction="minimize"
+        )
+        pruner.record_completed_trial([0.0, 500.0])
+        pruner.record_completed_trial([0.0, 700.0])
+
+        # Median episode length at this checkpoint is 600; longer is worse.
+        self.assertTrue(pruner.should_prune(eval_index=1, value=650.0))
+        self.assertFalse(pruner.should_prune(eval_index=1, value=550.0))
+
 
 if __name__ == "__main__":
     unittest.main()

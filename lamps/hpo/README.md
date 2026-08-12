@@ -16,8 +16,10 @@ PPO/reward/network/observer hyperparameters that are both **stable** and
   studies (verified against `optuna==4.9.0`), so there's no built-in way to
   stop a clearly-bad trial partway through training once you ask for a
   Pareto front. This reimplements the same idea by hand: a trial is pruned
-  if, at a given validation checkpoint, its reward is below the median of
-  same-checkpoint values from trials that already ran to completion. Pruned
+  if, at a given validation checkpoint, its value is worse than the median
+  of same-checkpoint values from trials that already ran to completion
+  ("worse" respects a `direction="maximize"|"minimize"` setting — `hpo_mtrl.py`
+  uses `"minimize"`, since it prunes on episode length, see below). Pruned
   trials never pollute that historical baseline for later trials.
 
 ## What's searched
@@ -104,7 +106,7 @@ python -m lamps.hpo.hpo_mtrl \
   --experiment image-classification \
   --train-datasets "all" \
   --val-datasets "mtlbm/micro/set0/BCT" \
-  --n-trials 50 \
+  --n-trials 25 \
   --timesteps-per-trial 10e6 \
   --study-name lamps-hpo \
   --storage "sqlite:///hpo_mtrl.db"
@@ -159,7 +161,7 @@ point to move `--storage` to a real RDB (Postgres/MySQL) instead.
 
 ## Watching progress
 
-**TensorBoard** (per-trial training curves + validation reward):
+**TensorBoard** (per-trial training curves + validation reward/episode length):
 
 ```bash
 tensorboard --logdir tb_logs_hpo
@@ -185,15 +187,25 @@ so there's no single "best" trial — `study.best_trials` (printed at the end
 of a run, and shown in the dashboard) is the **Pareto front**: trials where
 you can't improve one objective without making the other worse.
 
-1. **maximize** — mean validation reward over the trailing `--tail-evals`
-   evaluations (not a single peak sample, which would just reward a lucky
-   spike).
+Both objectives are computed from **validation episode length**, not
+validation reward. This matters because the reward function itself
+(`SparseReward` vs. `PotentialShapedReward`, with its own `shaping_scale`)
+is one of the things being searched — its scale isn't consistent across
+trials, so comparing raw reward across trials that used different reward
+functions is comparing different units. Episode length has no such problem:
+shorter always means "found the Pareto-optimal set faster," regardless of
+which reward trained the policy to get there.
+
+1. **minimize** — mean validation episode length over the trailing
+   `--tail-evals` evaluations (not a single best sample, which would just
+   reward a lucky episode).
 2. **minimize** — instability, defined as
-   `std(trailing validation reward) + max(0, peak_val_reward - trailing_mean)`.
-   The `std` term catches raw oscillation; the peak-minus-tail term
-   specifically penalizes a policy that trains up well and then degrades on
-   held-out data — the overfitting pattern this whole study exists to avoid,
-   which `std` alone wouldn't distinguish from healthy noise.
+   `std(trailing episode length) + max(0, trailing_mean - best_ep_length)`.
+   The `std` term catches raw oscillation; the second term specifically
+   penalizes a policy that trains down to a short episode length and then
+   degrades (gets slower) on held-out data — the overfitting pattern this
+   whole study exists to avoid, which `std` alone wouldn't distinguish from
+   healthy noise.
 
 Pick a point off the Pareto front based on how much peak performance you're
 willing to trade for stability — that judgment call is exactly why this
