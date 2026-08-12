@@ -4,4 +4,6 @@ transformers==4.57.1
 stable_baselines3[extra]
 sb3_contrib==2.6.0
 pymoo==0.6.1.5
+optuna==4.9.0
+optuna-dashboard==0.20.0
 setuptools<81

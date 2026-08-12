@@ -4,3 +4,4 @@ metadataset/
 metadataset_v1/
 tb_logs/
 .cache/
+hpo_mtrl.db
