@@ -85,6 +85,12 @@ parser.add_argument(
         "worker's sampler RNG diverges instead of proposing identical trials."
     ),
 )
+parser.add_argument(
+    "--disable-pruning",
+    action="store_true",
+    help="Skip mid-training pruning entirely, so every trial runs to completion "
+    "regardless of how it compares to the historical median at each eval.",
+)
 parser.add_argument("--device", type=str, default="auto")
 parser.add_argument(
     "--vec-env", type=str, choices=["subproc", "dummy"], default="dummy"
@@ -103,7 +109,7 @@ class TrialEvalCallback(MaskableEvalCallback):
     efficiency regardless of which reward trained the policy.
     """
 
-    def __init__(self, *args, pruner: ManualMedianPruner, **kwargs):
+    def __init__(self, *args, pruner: ManualMedianPruner | None, **kwargs):
         super().__init__(*args, **kwargs)
         self.pruner = pruner
         self.history: list[float] = []
@@ -134,7 +140,7 @@ class TrialEvalCallback(MaskableEvalCallback):
 
             eval_index = len(self.history)
 
-            if self.pruner.should_prune(eval_index, mean_ep_length):
+            if self.pruner is not None and self.pruner.should_prune(eval_index, mean_ep_length):
                 self.pruned = True
                 return False
 
@@ -229,7 +235,7 @@ def compute_objectives(history: list[float], tail_evals: int) -> tuple[float, fl
 
 
 class Objective:
-    def __init__(self, args: argparse.Namespace, pruner: ManualMedianPruner):
+    def __init__(self, args: argparse.Namespace, pruner: ManualMedianPruner | None):
         self.args = args
         self.pruner = pruner
         self.metrics = args.objectives.split(",")
@@ -300,7 +306,8 @@ class Objective:
         if callback.pruned:
             raise optuna.TrialPruned("Worse than the historical median at an early checkpoint.")
 
-        self.pruner.record_completed_trial(callback.history)
+        if self.pruner is not None:
+            self.pruner.record_completed_trial(callback.history)
 
         return compute_objectives(callback.history, args.tail_evals)
 
@@ -308,7 +315,7 @@ class Objective:
 def main():
     args = parser.parse_args()
 
-    pruner = ManualMedianPruner(direction="minimize")
+    pruner = None if args.disable_pruning else ManualMedianPruner(direction="minimize")
     objective = Objective(args, pruner)
 
     study = optuna.create_study(

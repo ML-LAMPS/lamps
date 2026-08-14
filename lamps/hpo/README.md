@@ -101,7 +101,16 @@ python -m lamps.hpo.hpo_mtrl \
 ```
 
 ```bash
-sbatch -J RUN1 --partition=haswell-256 --cpus-per-task=16 --mem=16G scripts/run.sbatch \
+PARTITION="haswell-64"
+# PARTITION="haswell-256"
+# PARTITION="epyc-256"
+# PARTITION="epyc-128"
+# PARTITION="epyc-384"
+# PARTITION="epyc-768"
+# PARTITION="skylake-96"
+# PARTITION="skylake-384"
+
+sbatch -J RUN1 --partition=$PARTITION --cpus-per-task=16 --mem=24G scripts/run.sbatch \
 python -m lamps.hpo.hpo_mtrl \
   --experiment image-classification \
   --train-datasets "all" \
@@ -151,6 +160,7 @@ point to move `--storage` to a real RDB (Postgres/MySQL) instead.
 | `--n-trials` | `50` | Number of Optuna trials in this run. |
 | `--timesteps-per-trial` | `2e6` | Reduced training budget per trial — this is the main compute lever, not the (unavailable) mid-training pruning. Pick something short enough to sweep many trials, but long enough for the validation curve to say something meaningful. |
 | `--eval-freq` | `10000` | Steps between validation evaluations (used for the objective *and* the manual pruner's checkpoints). |
+| `--disable-pruning` | off | Skip the manual median pruner entirely - every trial runs to `--timesteps-per-trial` regardless of how it compares to the historical median. |
 | `--n-eval-episodes` | `20` | Episodes per validation eval. Kept well above SB3's own default of 5 — with only a handful of episodes, the objective is mostly measuring sampling noise, not the policy. |
 | `--tail-evals` | `10` | How many trailing eval points define "converged" performance for the objectives (see below). |
 | `--vec-env` | `dummy` | Deliberately different from `train_mtrl.py`'s `subproc` default — spawning a fresh process pool per trial across dozens of trials is mostly overhead. Switch to `subproc` only if your envs are slow enough to need it. |

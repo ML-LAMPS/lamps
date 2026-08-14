@@ -22,6 +22,7 @@ To follow the training progress, use TensorBoard:
 """
 
 import argparse
+import os
 
 from sb3_contrib.ppo_mask import MaskablePPO
 from sb3_contrib.common.maskable.callbacks import MaskableEvalCallback
@@ -42,6 +43,7 @@ parser.add_argument("--total-timesteps", type=float, default=10e6)
 parser.add_argument(
     "--objectives", type=str, default="model/size_billion,eval/log_loss"
 )
+parser.add_argument("--study-name", type=str, default="")
 parser.add_argument("--seed", type=int, default=settings.DEFAULT_SEED)
 parser.add_argument("--base-checkpoint", type=str, default=None)
 parser.add_argument("--device", type=str, default="auto")
@@ -71,8 +73,9 @@ def main():
 
     args = parser.parse_args()
 
-    tensorboard_log = f"./tb_logs/{args.experiment}/single"
-    save_path = get_checkpoint_save_path(args.experiment, args.dataset, "single")
+    _tb_logs_sufix = os.path.join("single", args.study_name)
+    tensorboard_log = f"./tb_logs/{args.experiment}/{_tb_logs_sufix}"
+    save_path = get_checkpoint_save_path(args.experiment, args.dataset, _tb_logs_sufix)
 
     metrics = args.objectives.split(",")
 

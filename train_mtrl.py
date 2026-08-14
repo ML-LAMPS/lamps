@@ -189,6 +189,11 @@ def main():
 
     train_datasets, val_datasets, test_datasets = parse_datasets(args)
 
+    if args.tb_log_name:
+        tb_log_name = args.tb_log_name
+    else:
+        tb_log_name = parse_tb_log_name(args, train_datasets, val_datasets)
+
     if args.save_path is not None:
         save_path = args.save_path
         _tb_logs_sufix = os.path.relpath(
@@ -197,7 +202,7 @@ def main():
     else:
         _tb_logs_sufix = os.path.join("mtrl", args.study_name)
         save_path = get_checkpoint_save_path(
-            args.experiment, val_datasets[0], _tb_logs_sufix
+            args.experiment, slugify(tb_log_name), _tb_logs_sufix
         )
 
     tensorboard_log = f"./tb_logs/{args.experiment}/{_tb_logs_sufix}"
@@ -206,11 +211,6 @@ def main():
     print(f"Validation datasets: {val_datasets}")
     if test_datasets:
         print(f"Test datasets: {test_datasets}")
-
-    if args.tb_log_name:
-        tb_log_name = args.tb_log_name
-    else:
-        tb_log_name = parse_tb_log_name(args, train_datasets, val_datasets)
 
     train_envs = build_vec_env(
         [
